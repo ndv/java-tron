@@ -52,8 +52,16 @@ public class DB implements AutoCloseable {
             final String arch = System.getProperty("os.arch").toLowerCase(Locale.ENGLISH);
             final String os = System.getProperty("os.name").toLowerCase(Locale.ENGLISH);
             String library = null;
-            if (os.contains("win") && (arch.contains("86") || arch.contains("amd")) && arch.contains("64"))
-                library = "leveldb-jni.dll";
+			String ext = null;
+			if ((arch.contains("86") || arch.contains("amd")) && arch.contains("64"))
+				if (os.contains("win")) {
+					library = "leveldb-jni.dll";
+					ext = ".dll";
+				}
+				else if (os.indexOf("nix") >= 0 || os.indexOf("nux") >= 0) {
+					library = "libleveldb-jni.so";
+					ext = ".so";
+				}
             if (library == null) System.err.println("Cannot find leveldb library for arch=" + arch + " os=" + os);
             else {
                 InputStream is = DB.class.getResourceAsStream(library);
@@ -61,7 +69,7 @@ public class DB implements AutoCloseable {
                     System.err.println("Cannot load the leveldb library: " + library);
                 } else {
                     try {
-                        File temp = File.createTempFile("leveldb", ".dll");
+                        File temp = File.createTempFile("leveldb", ext);
                         temp.deleteOnExit();
                         try {
                             FileOutputStream fos = new FileOutputStream(temp);

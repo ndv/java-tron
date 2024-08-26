@@ -16,8 +16,8 @@
 package org.tron.core.config.args;
 
 import java.io.File;
-import org.iq80.leveldb.CompressionType;
-import org.iq80.leveldb.Options;
+import org.tron.leveldb.CompressionType;
+import org.tron.leveldb.Options;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Test;

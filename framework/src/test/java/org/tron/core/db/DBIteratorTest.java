@@ -1,13 +1,11 @@
 package org.tron.core.db;
 
-import static org.fusesource.leveldbjni.JniDBFactory.factory;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.NoSuchElementException;
-import org.iq80.leveldb.DB;
-import org.iq80.leveldb.Options;
+import org.tron.leveldb.DB;
+import org.tron.leveldb.Options;
 import org.junit.Assert;
 import org.junit.ClassRule;
 import org.junit.Rule;
@@ -18,6 +16,7 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.tron.core.db.common.iterator.RockStoreIterator;
 import org.tron.core.db.common.iterator.StoreIterator;
+import org.tron.leveldb.ReadOptions;
 
 public class DBIteratorTest {
 
@@ -31,10 +30,10 @@ public class DBIteratorTest {
   @Test
   public void testLevelDb() throws IOException {
     File file = temporaryFolder.newFolder();
-    try (DB db = factory.open(file, new Options().createIfMissing(true))) {
+    try (DB db = new DB(file, new Options().createIfMissing(true))) {
       db.put("1".getBytes(StandardCharsets.UTF_8), "1".getBytes(StandardCharsets.UTF_8));
       db.put("2".getBytes(StandardCharsets.UTF_8), "2".getBytes(StandardCharsets.UTF_8));
-      StoreIterator iterator = new StoreIterator(db.iterator());
+      StoreIterator iterator = new StoreIterator(db.iterator(new ReadOptions()));
       iterator.seekToFirst();
       Assert.assertArrayEquals("1".getBytes(StandardCharsets.UTF_8), iterator.getKey());
       Assert.assertArrayEquals("1".getBytes(StandardCharsets.UTF_8), iterator.next().getValue());
@@ -50,7 +49,7 @@ public class DBIteratorTest {
         Assert.assertTrue(e instanceof  IllegalStateException);
       }
 
-      iterator = new StoreIterator(db.iterator());
+      iterator = new StoreIterator(db.iterator(new ReadOptions()));
       iterator.seekToLast();
       Assert.assertArrayEquals("2".getBytes(StandardCharsets.UTF_8), iterator.getKey());
       Assert.assertArrayEquals("2".getBytes(StandardCharsets.UTF_8), iterator.getValue());

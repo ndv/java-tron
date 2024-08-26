@@ -15,8 +15,6 @@
 
 package org.tron.common.storage.leveldb;
 
-import static org.fusesource.leveldbjni.JniDBFactory.factory;
-
 import com.google.common.collect.Sets;
 import java.io.File;
 import java.io.IOException;
@@ -41,14 +39,13 @@ import java.util.stream.StreamSupport;
 import com.google.common.primitives.Bytes;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.iq80.leveldb.CompressionType;
-import org.iq80.leveldb.DB;
-import org.iq80.leveldb.DBIterator;
-import org.iq80.leveldb.Logger;
-import org.iq80.leveldb.Options;
-import org.iq80.leveldb.ReadOptions;
-import org.iq80.leveldb.WriteBatch;
-import org.iq80.leveldb.WriteOptions;
+import org.tron.leveldb.CompressionType;
+import org.tron.leveldb.DB;
+import org.tron.leveldb.DBIterator;
+import org.tron.leveldb.Logger;
+import org.tron.leveldb.Options;
+import org.tron.leveldb.ReadOptions;
+import org.tron.leveldb.WriteBatch;
 import org.slf4j.LoggerFactory;
 import org.tron.common.parameter.CommonParameter;
 import org.tron.common.storage.WriteOptionsWrapper;
@@ -70,7 +67,7 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
   private volatile boolean alive;
   private String parentPath;
   private Options options;
-  private WriteOptions writeOptions;
+  private boolean sync;
   private ReadWriteLock resetDbLock = new ReentrantReadWriteLock();
   private static final String LEVELDB = "LEVELDB";
   private static final org.slf4j.Logger innerLogger = LoggerFactory.getLogger(LEVELDB);
@@ -85,14 +82,14 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
    * constructor.
    */
   public LevelDbDataSourceImpl(String parentPath, String dataBaseName, Options options,
-      WriteOptions writeOptions) {
+      boolean sync) {
     this.parentPath = Paths.get(
         parentPath,
         CommonParameter.getInstance().getStorage().getDbDirectory()
     ).toString();
     this.dataBaseName = dataBaseName;
     this.options = options.logger(leveldbLogger);
-    this.writeOptions = writeOptions;
+    this.sync = sync;
     initDB();
   }
 
@@ -104,7 +101,6 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
 
     this.dataBaseName = dataBaseName;
     options = new Options().logger(leveldbLogger);
-    writeOptions = new WriteOptions();
   }
 
   @Override
@@ -143,7 +139,7 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
       Files.createDirectories(dbPath.getParent());
     }
     try {
-      database = factory.open(dbPath.toFile(), dbOptions);
+      database = new DB(dbPath.toFile(), dbOptions);
       if (!this.getDBName().startsWith("checkpoint")) {
         logger
             .info("DB {} open success with writeBufferSize {} M, cacheSize {} M, maxOpenFiles {}.",
@@ -208,7 +204,7 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
   public void putData(byte[] key, byte[] value) {
     resetDbLock.readLock().lock();
     try {
-      database.put(key, value, writeOptions);
+      database.put(key, value, sync);
     } finally {
       resetDbLock.readLock().unlock();
     }
@@ -218,7 +214,7 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
   public void deleteData(byte[] key) {
     resetDbLock.readLock().lock();
     try {
-      database.delete(key, writeOptions);
+      database.delete(key, sync);
     } finally {
       resetDbLock.readLock().unlock();
     }
@@ -267,10 +263,6 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
       Set<byte[]> result = Sets.newHashSet();
       long i = 0;
       iterator.seekToLast();
-      if (iterator.hasNext()) {
-        result.add(iterator.peekNext().getValue());
-        i++;
-      }
       for (; iterator.hasPrev() && i++ < limit; iterator.prev()) {
         result.add(iterator.peekPrev().getValue());
       }
@@ -380,14 +372,14 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
   private void updateByBatchInner(Map<byte[], byte[]> rows) throws Exception {
     try (WriteBatch batch = database.createWriteBatch()) {
       innerBatchUpdate(rows,batch);
-      database.write(batch, writeOptions);
+      database.write(batch, sync);
     }
   }
 
-  private void updateByBatchInner(Map<byte[], byte[]> rows, WriteOptions options) throws Exception {
+  private void updateByBatchInner(Map<byte[], byte[]> rows, boolean sync) throws Exception {
     try (WriteBatch batch = database.createWriteBatch()) {
       innerBatchUpdate(rows,batch);
-      database.write(batch, options);
+      database.write(batch, sync);
     }
   }
 
@@ -405,10 +397,10 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
   public void updateByBatch(Map<byte[], byte[]> rows, WriteOptionsWrapper options) {
     resetDbLock.readLock().lock();
     try {
-      updateByBatchInner(rows, options.level);
+      updateByBatchInner(rows, options.sync);
     } catch (Exception e) {
       try {
-        updateByBatchInner(rows, options.level);
+        updateByBatchInner(rows, options.sync);
       } catch (Exception e1) {
         throw new RuntimeException(e);
       }
@@ -466,7 +458,7 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
   @Override
   public LevelDbDataSourceImpl newInstance() {
     return new LevelDbDataSourceImpl(StorageUtils.getOutputDirectoryByDbName(dataBaseName),
-        dataBaseName, options, writeOptions);
+        dataBaseName, options, sync);
   }
 
   private DBIterator getDBIterator() {

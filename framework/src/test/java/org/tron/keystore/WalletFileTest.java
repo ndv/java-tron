@@ -8,15 +8,17 @@ import org.junit.Test;
 import org.tron.common.crypto.SignUtils;
 import org.tron.core.exception.CipherException;
 
+import static org.tron.keystore.CredentialsTest.getRandom;
+
 @Slf4j
 public class WalletFileTest {
 
   @Test
   public void testGetAddress() throws NoSuchAlgorithmException, CipherException {
     WalletFile walletFile1 = Wallet.createStandard("", SignUtils.getGeneratedRandomSign(
-        SecureRandom.getInstance("NativePRNG"),true));
+            getRandom(),true));
     WalletFile walletFile2 = Wallet.createStandard("", SignUtils.getGeneratedRandomSign(
-        SecureRandom.getInstance("NativePRNG"),true));
+            getRandom(),true));
     WalletFile walletFile3 = (WalletFile) getSame(walletFile1);
     Assert.assertNotEquals(walletFile1.getAddress(), walletFile2.getAddress());
     Assert.assertNotEquals(walletFile1.getCrypto(), walletFile2.getCrypto());

@@ -49,7 +49,7 @@ public class ZksnarkInitService {
 
   private static String getParamsFile(String fileName) {
     InputStream in = Thread.currentThread().getContextClassLoader()
-        .getResourceAsStream("params" + File.separator + fileName);
+        .getResourceAsStream("params/" + fileName);
     File fileOut = new File(System.getProperty("java.io.tmpdir")
         + File.separator + fileName + "." + System.currentTimeMillis());
     try {

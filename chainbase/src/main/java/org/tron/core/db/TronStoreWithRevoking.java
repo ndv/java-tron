@@ -15,7 +15,6 @@ import java.util.stream.Collectors;
 import javax.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.iq80.leveldb.WriteOptions;
 import org.rocksdb.DirectComparator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.tron.common.parameter.CommonParameter;
@@ -61,8 +60,8 @@ public abstract class TronStoreWithRevoking<T extends ProtoCapsule> implements I
           new LevelDbDataSourceImpl(StorageUtils.getOutputDirectoryByDbName(dbName),
               dbName,
               getOptionsByDbNameForLevelDB(dbName),
-              new WriteOptions().sync(CommonParameter.getInstance()
-                  .getStorage().isDbSync())));
+              CommonParameter.getInstance()
+                  .getStorage().isDbSync()));
     } else if ("ROCKSDB".equals(dbEngine.toUpperCase())) {
       String parentPath = Paths
           .get(StorageUtils.getOutputDirectoryByDbName(dbName), CommonParameter
@@ -77,7 +76,7 @@ public abstract class TronStoreWithRevoking<T extends ProtoCapsule> implements I
     this.revokingDB = new Chainbase(new SnapshotRoot(this.db));
   }
 
-  protected org.iq80.leveldb.Options getOptionsByDbNameForLevelDB(String dbName) {
+  protected org.tron.leveldb.Options getOptionsByDbNameForLevelDB(String dbName) {
     return StorageUtils.getOptionsByDbName(dbName);
   }
 

@@ -8,7 +8,6 @@ import java.util.Map.Entry;
 import javax.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.iq80.leveldb.WriteOptions;
 import org.rocksdb.DirectComparator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.tron.common.parameter.CommonParameter;
@@ -44,8 +43,8 @@ public abstract class TronDatabase<T> implements ITronChainBase<T> {
           new LevelDbDataSourceImpl(StorageUtils.getOutputDirectoryByDbName(dbName),
               dbName,
               getOptionsByDbNameForLevelDB(dbName),
-              new WriteOptions().sync(CommonParameter.getInstance()
-                  .getStorage().isDbSync()));
+              CommonParameter.getInstance()
+                  .getStorage().isDbSync());
     } else if ("ROCKSDB".equals(CommonParameter.getInstance()
         .getStorage().getDbEngine().toUpperCase())) {
       String parentName = Paths.get(StorageUtils.getOutputDirectoryByDbName(dbName),
@@ -66,7 +65,7 @@ public abstract class TronDatabase<T> implements ITronChainBase<T> {
   protected TronDatabase() {
   }
 
-  protected org.iq80.leveldb.Options getOptionsByDbNameForLevelDB(String dbName) {
+  protected org.tron.leveldb.Options getOptionsByDbNameForLevelDB(String dbName) {
     return StorageUtils.getOptionsByDbName(dbName);
   }
 

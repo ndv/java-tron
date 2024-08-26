@@ -1,13 +1,11 @@
 package org.tron.program;
 
-import static org.fusesource.leveldbjni.JniDBFactory.factory;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import org.iq80.leveldb.DB;
-import org.iq80.leveldb.Options;
+import org.tron.leveldb.DB;
+import org.tron.leveldb.Options;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -39,7 +37,7 @@ public class DBConvertTest {
     Options dbOptions = DBConvert.newDefaultLevelDbOptions();
     if (file.getName().contains("market_pair_price_to_order")) {
       dbOptions.comparator(new MarketOrderPriceComparatorForLevelDB());
-      try (DB db = factory.open(file,dbOptions)) {
+      try (DB db = new DB(file,dbOptions)) {
 
         byte[] sellTokenID1 = ByteArray.fromString("100");
         byte[] buyTokenID1 = ByteArray.fromString("200");
@@ -76,7 +74,7 @@ public class DBConvertTest {
       }
 
     } else {
-      try (DB db = factory.open(file,dbOptions)) {
+      try (DB db = new DB(file,dbOptions)) {
         for (int i = 0; i < 100; i++) {
           byte[] bytes = UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
           db.put(bytes, bytes);

@@ -7,17 +7,16 @@ public class WriteOptionsWrapper {
   @Getter
   private org.rocksdb.WriteOptions rocks = null;
   @Getter
-  private org.iq80.leveldb.WriteOptions level = null;
+  private boolean sync;
 
   public static WriteOptionsWrapper getInstance() {
     WriteOptionsWrapper wrapper = new WriteOptionsWrapper();
-    wrapper.level = new org.iq80.leveldb.WriteOptions();
     wrapper.rocks = new org.rocksdb.WriteOptions();
     return wrapper;
   }
 
   public WriteOptionsWrapper sync(boolean bool) {
-    this.level.sync(bool);
+    this.sync = bool;
     this.rocks.setSync(bool);
     return this;
   }

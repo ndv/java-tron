@@ -1,7 +1,5 @@
 package org.tron.program;
 
-import static org.fusesource.leveldbjni.JniDBFactory.factory;
-
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -19,10 +17,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.fusesource.leveldbjni.JniDBFactory;
-import org.iq80.leveldb.CompressionType;
-import org.iq80.leveldb.DB;
-import org.iq80.leveldb.DBIterator;
 import org.rocksdb.BlockBasedTableConfig;
 import org.rocksdb.BloomFilter;
 import org.rocksdb.ComparatorOptions;
@@ -35,6 +29,9 @@ import org.tron.common.utils.FileUtil;
 import org.tron.common.utils.MarketOrderPriceComparatorForLevelDB;
 import org.tron.common.utils.MarketOrderPriceComparatorForRockDB;
 import org.tron.common.utils.PropUtil;
+import org.tron.leveldb.CompressionType;
+import org.tron.leveldb.DB;
+import org.tron.leveldb.DBIterator;
 
 @Slf4j
 public class DBConvert implements Callable<Boolean> {
@@ -75,8 +72,8 @@ public class DBConvert implements Callable<Boolean> {
     this.startTime = System.currentTimeMillis();
   }
 
-  public static org.iq80.leveldb.Options newDefaultLevelDbOptions() {
-    org.iq80.leveldb.Options dbOptions = new org.iq80.leveldb.Options();
+  public static org.tron.leveldb.Options newDefaultLevelDbOptions() {
+    org.tron.leveldb.Options dbOptions = new org.tron.leveldb.Options();
     dbOptions.createIfMissing(true);
     dbOptions.paranoidChecks(true);
     dbOptions.verifyChecksums(true);
@@ -173,11 +170,11 @@ public class DBConvert implements Callable<Boolean> {
   public DB newLevelDb(Path db) throws Exception {
     DB database;
     File file = db.toFile();
-    org.iq80.leveldb.Options dbOptions = newDefaultLevelDbOptions();
+    org.tron.leveldb.Options dbOptions = newDefaultLevelDbOptions();
     if ("market_pair_price_to_order".equalsIgnoreCase(this.dbName)) {
       dbOptions.comparator(new MarketOrderPriceComparatorForLevelDB());
     }
-    database = factory.open(file, dbOptions);
+    database = new DB(file, dbOptions);
     return database;
   }
 
@@ -274,9 +271,9 @@ public class DBConvert implements Callable<Boolean> {
     List<byte[]> keys = new ArrayList<>(BATCH);
     List<byte[]> values = new ArrayList<>(BATCH);
     try (DBIterator levelIterator = level.iterator(
-        new org.iq80.leveldb.ReadOptions().fillCache(false))) {
+        new org.tron.leveldb.ReadOptions().fillCache(false))) {
 
-      JniDBFactory.pushMemoryPool(1024 * 1024);
+      DB.pushMemoryPool(1024 * 1024);
       levelIterator.seekToFirst();
 
       while (levelIterator.hasNext()) {
@@ -315,7 +312,7 @@ public class DBConvert implements Callable<Boolean> {
       try {
         level.close();
         rocks.close();
-        JniDBFactory.popMemoryPool();
+        DB.popMemoryPool();
       } catch (Exception e1) {
         logger.error("{}", e1);
       }

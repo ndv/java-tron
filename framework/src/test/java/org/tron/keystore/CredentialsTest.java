@@ -13,10 +13,18 @@ import org.tron.common.utils.ByteUtil;
 @Slf4j
 public class CredentialsTest extends TestCase {
 
+  public static SecureRandom getRandom() throws NoSuchAlgorithmException {
+    try {
+      return SecureRandom.getInstance("NativePRNG");
+    } catch (NoSuchAlgorithmException ex) {
+      return SecureRandom.getInstance("Windows-PRNG");
+    }
+  }
+
   @Test
   public void testCreate() throws NoSuchAlgorithmException {
     Credentials credentials = Credentials.create(SignUtils.getGeneratedRandomSign(
-        SecureRandom.getInstance("NativePRNG"),true));
+        getRandom(),true));
     Assert.hasText(credentials.getAddress(),"Credentials address create failed!");
     Assert.notNull(credentials.getSignInterface(),
         "Credentials cryptoEngine create failed");
@@ -36,9 +44,9 @@ public class CredentialsTest extends TestCase {
   @Test
   public void testEquals() throws NoSuchAlgorithmException {
     Credentials credentials1 = Credentials.create(SignUtils.getGeneratedRandomSign(
-        SecureRandom.getInstance("NativePRNG"),true));
+            getRandom(),true));
     Credentials credentials2 = Credentials.create(SignUtils.getGeneratedRandomSign(
-        SecureRandom.getInstance("NativePRNG"),true));
+            getRandom(),true));
     Assert.isTrue(!credentials1.equals(credentials2),
         "Credentials instance should be not equal!");
     Assert.isTrue(!(credentials1.hashCode() == credentials2.hashCode()),

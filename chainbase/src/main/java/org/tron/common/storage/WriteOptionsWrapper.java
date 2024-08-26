@@ -3,7 +3,7 @@ package org.tron.common.storage;
 public class WriteOptionsWrapper {
 
   public org.rocksdb.WriteOptions rocks = null;
-  public org.iq80.leveldb.WriteOptions level = null;
+  public boolean sync;
 
   private WriteOptionsWrapper() {
 
@@ -11,7 +11,6 @@ public class WriteOptionsWrapper {
 
   public static WriteOptionsWrapper getInstance() {
     WriteOptionsWrapper wrapper = new WriteOptionsWrapper();
-    wrapper.level = new org.iq80.leveldb.WriteOptions();
     wrapper.rocks = new org.rocksdb.WriteOptions();
 
     return wrapper;
@@ -19,7 +18,7 @@ public class WriteOptionsWrapper {
 
 
   public WriteOptionsWrapper sync(boolean bool) {
-    this.level.sync(bool);
+    this.sync = bool;
     this.rocks.setSync(bool);
     return this;
   }

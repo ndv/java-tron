@@ -2,7 +2,7 @@ package org.tron.common.utils;
 
 import org.tron.core.capsule.utils.MarketUtils;
 
-public class MarketOrderPriceComparatorForLevelDB implements org.iq80.leveldb.DBComparator {
+public class MarketOrderPriceComparatorForLevelDB implements org.tron.leveldb.DBComparator {
 
   @Override
   public String name() {

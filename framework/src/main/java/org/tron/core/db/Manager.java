@@ -47,6 +47,7 @@ import org.quartz.CronExpression;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.tron.api.GrpcAPI.TransactionInfoList;
+import org.tron.capture.TransactionCapture;
 import org.tron.common.args.GenesisBlock;
 import org.tron.common.bloom.Bloom;
 import org.tron.common.es.ExecutorServiceManager;
@@ -264,6 +265,8 @@ public class Manager {
 
   @Autowired
   private RewardViCalService rewardViCalService;
+
+  public TransactionCapture transactionCapture;
 
   /**
    * Cycle thread to rePush Transactions
@@ -609,6 +612,7 @@ public class Manager {
         this.khaosDb.start(genesisBlock);
         this.updateRecentBlock(genesisBlock);
         initAccountHistoryBalance();
+        getProposalStore().initGenesisProposals(genesisBlock);
       }
     }
   }
@@ -1239,6 +1243,10 @@ public class Manager {
                 && CommonParameter.getInstance().getShutdownBlockTime()
                 .isSatisfiedBy(new Date(block.getTimeStamp()))) {
           latestSolidityNumShutDown = block.getNum();
+        }
+
+        for (TransactionCapsule tc: txs) {
+          transactionCapture.capture(tc.getInstance(), false);
         }
 
         try (PendingManager pm = new PendingManager(this)) {

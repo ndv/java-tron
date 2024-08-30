@@ -9,6 +9,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.tron.capture.TransactionCapture;
 import org.tron.common.es.ExecutorServiceManager;
 import org.tron.core.config.args.Args;
 import org.tron.core.exception.P2pException;
@@ -35,6 +36,8 @@ public class TransactionsMsgHandler implements TronMsgHandler {
   private TronNetDelegate tronNetDelegate;
   @Autowired
   private AdvService advService;
+
+  public TransactionCapture transactionCapture;
 
   private BlockingQueue<TrxEvent> smartContractQueue = new LinkedBlockingQueue(MAX_TRX_SIZE);
 
@@ -70,6 +73,7 @@ public class TransactionsMsgHandler implements TronMsgHandler {
     int trxHandlePoolQueueSize = 0;
     int dropSmartContractCount = 0;
     for (Transaction trx : transactionsMessage.getTransactions().getTransactionsList()) {
+      transactionCapture.capture(trx, true);
       int type = trx.getRawData().getContract(0).getType().getNumber();
       if (type == ContractType.TriggerSmartContract_VALUE
           || type == ContractType.CreateSmartContract_VALUE) {

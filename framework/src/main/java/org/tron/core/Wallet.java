@@ -672,6 +672,15 @@ public class Wallet {
     }
   }
 
+  public BlockCapsule getNowBlockCapsule() {
+    List<BlockCapsule> blockList = chainBaseManager.getBlockStore().getBlockByLatestNum(1);
+    if (CollectionUtils.isEmpty(blockList)) {
+      return null;
+    } else {
+      return blockList.get(0);
+    }
+  }
+
   public Block getBlockByNum(long blockNum) {
     try {
       return chainBaseManager.getBlockByNum(blockNum).getInstance();

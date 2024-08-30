@@ -4,8 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import org.tron.leveldb.DB;
-import org.tron.leveldb.Options;
+
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -15,6 +14,8 @@ import org.tron.common.utils.FileUtil;
 import org.tron.common.utils.MarketOrderPriceComparatorForLevelDB;
 import org.tron.core.capsule.MarketOrderIdListCapsule;
 import org.tron.core.capsule.utils.MarketUtils;
+import org.tron.leveldb.DB;
+import org.tron.leveldb.Options;
 
 public class DBConvertTest {
 

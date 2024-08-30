@@ -4,8 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.NoSuchElementException;
-import org.tron.leveldb.DB;
-import org.tron.leveldb.Options;
 import org.junit.Assert;
 import org.junit.ClassRule;
 import org.junit.Rule;
@@ -16,6 +14,8 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.tron.core.db.common.iterator.RockStoreIterator;
 import org.tron.core.db.common.iterator.StoreIterator;
+import org.tron.leveldb.DB;
+import org.tron.leveldb.Options;
 import org.tron.leveldb.ReadOptions;
 
 public class DBIteratorTest {

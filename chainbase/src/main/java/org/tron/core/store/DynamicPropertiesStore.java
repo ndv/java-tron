@@ -920,7 +920,10 @@ public class DynamicPropertiesStore extends TronStoreWithRevoking<BytesCapsule> 
     }
 
     try {
-      this.getUnfreezeDelayDays();
+      if (this.getUnfreezeDelayDays() == 0) {
+        this.saveUnfreezeDelayDays(
+                CommonParameter.getInstance().getUnfreezeDelayDays());
+      }
     } catch (IllegalArgumentException e) {
       this.saveUnfreezeDelayDays(
           CommonParameter.getInstance().getUnfreezeDelayDays()

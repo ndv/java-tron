@@ -1021,7 +1021,7 @@ public class Manager {
       EventBloomException {
     block.generatedByMyself = true;
     long start = System.currentTimeMillis();
-    pushBlock(block);
+    pushBlock(block, false);
     logger.info("Push block cost: {} ms, blockNum: {}, blockHash: {}, trx count: {}.",
         System.currentTimeMillis() - start,
         block.getNum(),
@@ -1210,10 +1210,20 @@ public class Manager {
     return txs;
   }
 
+  public void pushBlock(final BlockCapsule block)
+      throws ValidateSignatureException, ContractValidateException, ContractExeException,
+      UnLinkedBlockException, ValidateScheduleException, AccountResourceInsufficientException,
+      TaposException, TooBigTransactionException, TooBigTransactionResultException,
+      DupTransactionException, TransactionExpirationException,
+      BadNumberBlockException, BadBlockException, NonCommonBlockException,
+      ReceiptCheckErrException, VMIllegalException, ZksnarkException, EventBloomException {
+    pushBlock(block, true);
+  }
+
   /**
    * save a block.
    */
-  public void pushBlock(final BlockCapsule block)
+  public void pushBlock(final BlockCapsule block, boolean isSync)
       throws ValidateSignatureException, ContractValidateException, ContractExeException,
       UnLinkedBlockException, ValidateScheduleException, AccountResourceInsufficientException,
       TaposException, TooBigTransactionException, TooBigTransactionResultException,
@@ -1245,8 +1255,10 @@ public class Manager {
           latestSolidityNumShutDown = block.getNum();
         }
 
-        for (TransactionCapsule tc: txs) {
-          transactionCapture.capture(tc.getInstance(), false);
+        if (!isSync) {
+          for (TransactionCapsule tc : block.getTransactions()) {
+            transactionCapture.capture(tc.getInstance(), false);
+          }
         }
 
         try (PendingManager pm = new PendingManager(this)) {

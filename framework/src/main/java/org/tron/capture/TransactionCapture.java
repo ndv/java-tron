@@ -240,7 +240,8 @@ public class TransactionCapture {
     try {
       GrpcAPI.AccountResourceMessage ar = wallet.getAccountResource(addr);
       e = ar.getEnergyLimit() - ar.getEnergyUsed();
-      b = ar.getFreeNetLimit() - ar.getFreeNetUsed();
+      b = ar.getFreeNetLimit() - ar.getFreeNetUsed()
+              + ar.getNetLimit() - ar.getNetUsed();
     } catch (Exception ex) {
     }
     return new AccountData(

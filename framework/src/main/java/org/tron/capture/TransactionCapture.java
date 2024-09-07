@@ -233,15 +233,24 @@ public class TransactionCapture {
             .setNumber(bid.getNum())
             .setHash(hashString)
             .build();
-    GrpcAPI.AccountResourceMessage ar = wallet.getAccountResource(addr);
+
+    long e = 0;
+    long b = 0;
+
+    try {
+      GrpcAPI.AccountResourceMessage ar = wallet.getAccountResource(addr);
+      e = ar.getEnergyLimit() - ar.getEnergyUsed();
+      b = ar.getFreeNetLimit() - ar.getFreeNetUsed();
+    } catch (Exception ex) {
+    }
     return new AccountData(
             wallet.getAccountBalance(
                     BalanceContract.AccountBalanceRequest.newBuilder()
                             .setAccountIdentifier(accId)
                             .setBlockIdentifier(blockId)
                             .build()).getBalance(),
-            ar.getEnergyLimit() - ar.getEnergyUsed(),
-            ar.getFreeNetLimit() - ar.getFreeNetUsed()
+            e,
+            b
     );
   }
 

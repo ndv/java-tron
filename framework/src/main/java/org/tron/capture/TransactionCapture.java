@@ -384,6 +384,8 @@ public class TransactionCapture {
   }
 
   private static boolean equals(ByteString a, byte[] b, int l) {
+    if (a.size() < l || b.length < l)
+      return false;
     for (int i=0; i<l; i++) {
       if (a.byteAt(i) != b[i]) {
         return false;

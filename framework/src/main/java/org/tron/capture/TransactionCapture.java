@@ -350,10 +350,10 @@ public class TransactionCapture {
 
             break;
         }
-      } catch (InvalidProtocolBufferException e) {
-        logger.warn("In transaction capture", e);
       } catch (InterruptedException | ItemNotFoundException ex) {
         return;
+      } catch (Exception e) {
+        logger.warn("In transaction capture", e);
       }
     }
   }

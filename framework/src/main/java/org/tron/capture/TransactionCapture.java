@@ -274,7 +274,7 @@ public class TransactionCapture {
             TransferContract transferContract = any.unpack(TransferContract.class);
             priv = getTargetAddress(transferContract.getToAddress().toByteArray());
             if (priv != null) {
-              AccountData ad = getAccountData(transferContract.getToAddress());
+              //AccountData ad = getAccountData(transferContract.getToAddress());
               processStdin.println("type=transfer");
               //processStdin.println("from="
               //        + Hex.toHexString(transferContract.getOwnerAddress().toByteArray()));
@@ -282,9 +282,9 @@ public class TransactionCapture {
                       + Hex.toHexString(transferContract.getToAddress().toByteArray()));
               processStdin.println("priv=" + Hex.toHexString(priv));
               processStdin.println("amount=" + transferContract.getAmount());
-              processStdin.println("balance=" + ad.balance);
-              processStdin.println("energy=" + ad.energy);
-              processStdin.println("bandwidth=" + ad.bandwidth);
+              //processStdin.println("balance=" + ad.balance);
+              //processStdin.println("energy=" + ad.energy);
+              //processStdin.println("bandwidth=" + ad.bandwidth);
               processStdin.println("txid=" + getTxId(trx));
               processStdin.println();
               processStdin.flush();
@@ -294,7 +294,7 @@ public class TransactionCapture {
             TransferAssetContract assetContract = any.unpack(TransferAssetContract.class);
             priv = getTargetAddress(assetContract.getToAddress().toByteArray());
             if (priv != null) {
-              AccountData ad = getAccountData(assetContract.getToAddress());
+              //AccountData ad = getAccountData(assetContract.getToAddress());
               processStdin.println("type=asset_transfer");
               //processStdin.println("from="
               //        + Hex.toHexString(assetContract.getOwnerAddress().toByteArray()));
@@ -304,9 +304,9 @@ public class TransactionCapture {
               processStdin.println("amount=" + assetContract.getAmount());
               processStdin.println("asset="
                       + new String(assetContract.getAssetName().toByteArray()));
-              processStdin.println("balance=" + ad.balance);
-              processStdin.println("energy=" + ad.energy);
-              processStdin.println("bandwidth=" + ad.bandwidth);
+              //processStdin.println("balance=" + ad.balance);
+              //processStdin.println("energy=" + ad.energy);
+              //processStdin.println("bandwidth=" + ad.bandwidth);
               processStdin.println("txid=" + getTxId(trx));
               processStdin.println();
               processStdin.flush();
@@ -333,7 +333,7 @@ public class TransactionCapture {
               break;
             }
 
-            AccountData ad = getAccountData(ByteString.copyFrom(address));
+            //AccountData ad = getAccountData(ByteString.copyFrom(address));
             processStdin.println("type=trc20");
             processStdin.println("to="
                     + Hex.toHexString(address));
@@ -341,16 +341,16 @@ public class TransactionCapture {
             processStdin.println("amount=" + amount);
             processStdin.println("token="
                     + Hex.toHexString(smartContract.getContractAddress().toByteArray()));
-            processStdin.println("balance=" + ad.balance);
-            processStdin.println("energy=" + ad.energy);
-            processStdin.println("bandwidth=" + ad.bandwidth);
+            //processStdin.println("balance=" + ad.balance);
+            //processStdin.println("energy=" + ad.energy);
+            //processStdin.println("bandwidth=" + ad.bandwidth);
             processStdin.println("txid=" + getTxId(trx));
             processStdin.println();
             processStdin.flush();
 
             break;
         }
-      } catch (InterruptedException | ItemNotFoundException ex) {
+      } catch (InterruptedException ex) {
         return;
       } catch (Exception e) {
         logger.warn("In transaction capture", e);

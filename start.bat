@@ -1,0 +1,1 @@
+java -Xmx24g -XX:+UseConcMarkSweepGC -jar build\libs\FullNode.jar -c h:\main_net_config.conf --log-config logback.xml -d h:\output-directory

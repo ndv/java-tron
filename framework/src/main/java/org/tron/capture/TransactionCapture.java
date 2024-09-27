@@ -32,6 +32,8 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.io.filefilter.WildcardFileFilter;
@@ -46,15 +48,20 @@ import org.tron.common.utils.Commons;
 import org.tron.common.utils.Sha256Hash;
 import org.tron.core.Wallet;
 import org.tron.core.capsule.BlockCapsule;
+import org.tron.core.capsule.TransactionInfoCapsule;
 import org.tron.core.db.Manager;
 import org.tron.core.exception.ItemNotFoundException;
 import org.tron.core.net.messagehandler.TransactionsMsgHandler;
+import org.tron.core.store.TransactionRetStore;
 import org.tron.leveldb.CompressionType;
 import org.tron.leveldb.DB;
 import org.tron.leveldb.Options;
+import org.tron.protos.Protocol.InternalTransaction;
+import org.tron.protos.Protocol.InternalTransaction.CallValueInfo;
 import org.tron.protos.Protocol.Transaction;
 import org.tron.protos.Protocol.Transaction.Contract.ContractType;
 import org.tron.protos.contract.AssetIssueContractOuterClass.TransferAssetContract;
+import org.tron.protos.contract.Common;
 import org.tron.protos.contract.SmartContractOuterClass.TriggerSmartContract;
 import org.tron.protos.contract.BalanceContract;
 import org.tron.protos.contract.BalanceContract.AccountIdentifier;
@@ -72,6 +79,9 @@ public class TransactionCapture {
   private Manager manager;
   @Autowired
   private TransactionsMsgHandler transactionsMsgHandler;
+
+  @Autowired
+  private TransactionRetStore transactionRetStore;
 
   private Timer timer = new Timer("capture-timer");
 
@@ -260,6 +270,11 @@ public class TransactionCapture {
             trx.getRawData().toByteArray()).toString();
   }
 
+  private static byte[] getTxIdBytes(Transaction trx) {
+    return Sha256Hash.of(CommonParameter.getInstance().isECKeyCryptoEngine(),
+            trx.getRawData().toByteArray()).getBytes();
+  }
+
   private void scriptThread() {
     while (!scriptThread.isInterrupted()) {
       try {
@@ -349,6 +364,83 @@ public class TransactionCapture {
             processStdin.flush();
 
             break;
+          case ContractType.DelegateResourceContract_VALUE:
+            BalanceContract.DelegateResourceContract drc = any.unpack(BalanceContract.DelegateResourceContract.class);
+            priv = getTargetAddress(drc.getReceiverAddress().toByteArray());
+            if (priv != null) {
+              processStdin.println("type=delegate_resource");
+              processStdin.println("resource=" + drc.getResource().name());
+              processStdin.println("to="
+                      + Hex.toHexString(drc.getReceiverAddress().toByteArray()));
+              processStdin.println("priv=" + Hex.toHexString(priv));
+              processStdin.println("amount=" + drc.getBalance());
+              processStdin.println("txid=" + getTxId(trx));
+              processStdin.println();
+              processStdin.flush();
+            }
+            break;
+          case ContractType.WithdrawBalanceContract_VALUE:
+            BalanceContract.WithdrawBalanceContract wbc = any.unpack(BalanceContract.WithdrawBalanceContract.class);
+            priv = getTargetAddress(wbc.getOwnerAddress().toByteArray());
+            if (priv != null) {
+              processStdin.println("type=withdrawbalancecontract");
+              processStdin.println("to="
+                      + Hex.toHexString(wbc.getOwnerAddress().toByteArray()));
+              processStdin.println("priv=" + Hex.toHexString(priv));
+              processStdin.println("txid=" + getTxId(trx));
+              processStdin.println();
+              processStdin.flush();
+            }
+            break;
+          case ContractType.WithdrawExpireUnfreezeContract_VALUE:
+            BalanceContract.WithdrawExpireUnfreezeContract weuc = any.unpack(BalanceContract.WithdrawExpireUnfreezeContract.class);
+            priv = getTargetAddress(weuc.getOwnerAddress().toByteArray());
+            if (priv != null) {
+              processStdin.println("type=withdrawexpireunfreezecontract");
+              processStdin.println("to="
+                      + Hex.toHexString(weuc.getOwnerAddress().toByteArray()));
+              processStdin.println("priv=" + Hex.toHexString(priv));
+              processStdin.println("txid=" + getTxId(trx));
+              processStdin.println();
+              processStdin.flush();
+            }
+            break;
+          case ContractType.UnfreezeBalanceContract_VALUE:
+            BalanceContract.UnfreezeBalanceContract ubc = any.unpack(BalanceContract.UnfreezeBalanceContract.class);
+            priv = getTargetAddress(ubc.getOwnerAddress().toByteArray());
+            if (priv != null) {
+              processStdin.println("type=unfreezebalancecontract");
+              processStdin.println("resource=" + ubc.getResource().name());
+              processStdin.println("to="
+                      + Hex.toHexString(ubc.getOwnerAddress().toByteArray()));
+              processStdin.println("priv=" + Hex.toHexString(priv));
+              processStdin.println("txid=" + getTxId(trx));
+              processStdin.println();
+              processStdin.flush();
+            }
+            break;
+        }
+        TransactionInfoCapsule tic = transactionRetStore.getTransactionInfo(getTxIdBytes(trx));
+        if (tic != null) {
+          for (InternalTransaction it : tic.getInstance().getInternalTransactionsList()) {
+            if (it.getTransferToAddress() != null) {
+              byte[] addr = it.getTransferToAddress().toByteArray();
+              priv = getTargetAddress(addr);
+              if (priv != null) {
+                processStdin.println("type=internal");
+                processStdin.println("to="
+                        + Hex.toHexString(addr));
+                processStdin.println("priv=" + Hex.toHexString(priv));
+                for (CallValueInfo cvi: it.getCallValueInfoList()) {
+                  processStdin.println("value=" + cvi.getCallValue());
+                  processStdin.println("token=" + cvi.getTokenId());
+                }
+                processStdin.println("txid=" + getTxId(trx));
+                processStdin.println();
+                processStdin.flush();
+              }
+            }
+          }
         }
       } catch (InterruptedException ex) {
         return;

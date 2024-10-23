@@ -108,18 +108,22 @@ public class TransactionCapture {
       this.w = w;
       this.s = new CountDownLatch(1);
     }
+
     public PrintWriter w;
     public CountDownLatch s;
     public boolean force;
   }
 
   class TransactionAndPrintWriter {
-    public TransactionAndPrintWriter(Transaction tx, PrintWriterWithSignal trace) {
+    public TransactionAndPrintWriter(Transaction tx, PrintWriterWithSignal trace, boolean frompool) {
       this.tx = tx;
       this.trace = trace;
+      this.frompool = frompool;
     }
+
     public Transaction tx;
     public PrintWriterWithSignal trace;
+    public boolean frompool;
   }
 
   private BlockingQueue<TransactionAndPrintWriter> transactionQueue = new ArrayBlockingQueue<>(10000);
@@ -199,23 +203,20 @@ public class TransactionCapture {
     return (a >>> n) | (a << (32 - n));
   }
 
-  void tracePrintf(String msg, Object... args)
-  {
+  void tracePrintf(String msg, Object... args) {
     PrintWriterWithSignal t = trace.get();
     if (t != null) {
       t.w.printf(msg, args);
     }
   }
 
-  void traceFinish()
-  {
+  void traceFinish() {
     PrintWriterWithSignal t = trace.get();
     if (t != null)
       t.s.countDown();
   }
 
-  boolean traceForce()
-  {
+  boolean traceForce() {
     PrintWriterWithSignal t = trace.get();
     if (t != null)
       return t.force;
@@ -229,13 +230,13 @@ public class TransactionCapture {
     for (int i = 0; i < bloomHashes; i++) {
       int a = bb.getInt(1 + i * 4);
       int b = bb.getInt(1 + (i + 2) % 5 * 4);
-      long h = ((((long)(a ^ rotr(b, 17))) & 0xffffffffL) << 31)
-              ^ (((long)(rotr(b, 29) ^ rotr(a, 7))) & 0xffffffffL);
+      long h = ((((long) (a ^ rotr(b, 17))) & 0xffffffffL) << 31)
+              ^ (((long) (rotr(b, 29) ^ rotr(a, 7))) & 0xffffffffL);
       long bi = h % sz;
-      if ((bloom[(int)(bi/8)] & (1 << (bi % 8))) == 0) {
+      if ((bloom[(int) (bi / 8)] & (1 << (bi % 8))) == 0) {
         tracePrintf("Address not found in Bloom filter: %s\r\n", ByteArray.toHexString(address));
         if (traceForce())
-          return new byte[] {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32};
+          return new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
         return null;
       }
     }
@@ -248,7 +249,7 @@ public class TransactionCapture {
     if (result == null && trace.get() != null) {
       tracePrintf("Bloom false positive: %s\r\n", ByteArray.toHexString(address));
       if (traceForce())
-        return new byte[] {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32};
+        return new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
     } else
       tracePrintf("Key found for: %s\r\n", ByteArray.toHexString(address));
     return result;
@@ -282,7 +283,7 @@ public class TransactionCapture {
     }
     capturedTransactions.put(txhash, true);
 
-    if (!transactionQueue.offer(new TransactionAndPrintWriter(trx, trace.get()))) {
+    if (!transactionQueue.offer(new TransactionAndPrintWriter(trx, trace.get(), frompool))) {
       if (queueFullTransactionLogged + 1000 < System.currentTimeMillis()) {
         queueFullTransactionLogged = System.currentTimeMillis();
         logger.warn("The capture script is slow: skipping transactions...");
@@ -360,6 +361,20 @@ public class TransactionCapture {
     if (trace.get() != null) trace.get().w.println(s);
   }
 
+  void logTransactionCaptured(TransactionAndPrintWriter tp, byte[] address, String type)
+  {
+    Transaction.Result.contractResult ret = tp.tx.getRet(0).getContractRet();
+    logger.info("Transaction captured: {} from {}, type: {} to {}, contractResult={}",
+            getTxId(tp.tx), tp.frompool ? "POOL" : "BLOCK", type,
+            Hex.toHexString(address), ret == null ? "null" : ret.name());
+  }
+
+  String getContractResult(Transaction trx)
+  {
+    Transaction.Result.contractResult ret = trx.getRet(0).getContractRet();
+    return ret == null ? "null" : ret.name();
+  }
+
   private void scriptThread() {
     while (!scriptThread.isInterrupted()) {
       try {
@@ -378,37 +393,42 @@ public class TransactionCapture {
           tracePrintf("Transaction type %d\r\n", type);
 
           byte[] priv;
+          byte[] address;
           switch (type) {
             case ContractType.TransferContract_VALUE:
               TransferContract transferContract = any.unpack(TransferContract.class);
-              priv = getTargetAddress(transferContract.getToAddress().toByteArray());
+              address = transferContract.getToAddress().toByteArray();
+              priv = getTargetAddress(address);
               if (priv != null) {
+                logTransactionCaptured(tp, address, "transfer");
                 //AccountData ad = getAccountData(transferContract.getToAddress());
                 processPrintln("type=transfer");
                 //processPrintln("from="
                 //        + Hex.toHexString(transferContract.getOwnerAddress().toByteArray()));
                 processPrintln("to="
-                        + Hex.toHexString(transferContract.getToAddress().toByteArray()));
+                        + Hex.toHexString(address));
                 processPrintln("priv=" + Hex.toHexString(priv));
                 processPrintln("amount=" + transferContract.getAmount());
                 //processPrintln("balance=" + ad.balance);
                 //processPrintln("energy=" + ad.energy);
                 //processPrintln("bandwidth=" + ad.bandwidth);
                 processPrintln("txid=" + getTxId(trx));
+                processPrintln("contractResult=" + getContractResult(trx));
                 processPrintln("");
                 processStdin.flush();
               }
               break;
             case ContractType.TransferAssetContract_VALUE:
               TransferAssetContract assetContract = any.unpack(TransferAssetContract.class);
-              priv = getTargetAddress(assetContract.getToAddress().toByteArray());
+              address = assetContract.getToAddress().toByteArray();
+              priv = getTargetAddress(address);
               if (priv != null) {
+                logTransactionCaptured(tp, address, "asset_transfer");
                 //AccountData ad = getAccountData(assetContract.getToAddress());
                 processPrintln("type=asset_transfer");
                 //processPrintln("from="
                 //        + Hex.toHexString(assetContract.getOwnerAddress().toByteArray()));
-                processPrintln("to="
-                        + Hex.toHexString(assetContract.getToAddress().toByteArray()));
+                processPrintln("to=" + Hex.toHexString(address));
                 processPrintln("priv=" + Hex.toHexString(priv));
                 processPrintln("amount=" + assetContract.getAmount());
                 processPrintln("asset="
@@ -417,13 +437,13 @@ public class TransactionCapture {
                 //processPrintln("energy=" + ad.energy);
                 //processPrintln("bandwidth=" + ad.bandwidth);
                 processPrintln("txid=" + getTxId(trx));
+                processPrintln("contractResult=" + getContractResult(trx));
                 processPrintln("");
                 processStdin.flush();
               }
               break;
             case ContractType.TriggerSmartContract_VALUE:
               TriggerSmartContract smartContract = any.unpack(TriggerSmartContract.class);
-              byte[] address;
               BigInteger amount;
               if (equals(smartContract.getData(), transferSelector, 4)) {
                 address = unpackAddress(smartContract.getData(), 4);
@@ -432,6 +452,7 @@ public class TransactionCapture {
                 address = unpackAddress(smartContract.getData(), 4 + 32);
                 amount = unpackUint256(smartContract.getData(), 4 + 32 + 32);
               } else {
+                logger.info("Unknown method ID: " + smartContract.getData());
                 tracePrintf("Unknown method ID");
                 break;
               }
@@ -439,6 +460,7 @@ public class TransactionCapture {
               if (priv == null) {
                 break;
               }
+              logTransactionCaptured(tp, address, "trc20");
               if (!captureThisContract(smartContract.getContractAddress())) {
                 logger.warn("This contract is not captured: " + Hex.toHexString(smartContract.getContractAddress().toByteArray()));
                 break;
@@ -446,8 +468,7 @@ public class TransactionCapture {
 
               //AccountData ad = getAccountData(ByteString.copyFrom(address));
               processPrintln("type=trc20");
-              processPrintln("to="
-                      + Hex.toHexString(address));
+              processPrintln("to=" + Hex.toHexString(address));
               processPrintln("priv=" + Hex.toHexString(priv));
               processPrintln("amount=" + amount);
               processPrintln("token="
@@ -456,61 +477,70 @@ public class TransactionCapture {
               //processPrintln("energy=" + ad.energy);
               //processPrintln("bandwidth=" + ad.bandwidth);
               processPrintln("txid=" + getTxId(trx));
+              processPrintln("contractResult=" + getContractResult(trx));
               processPrintln("");
               processStdin.flush();
 
               break;
             case ContractType.DelegateResourceContract_VALUE:
               BalanceContract.DelegateResourceContract drc = any.unpack(BalanceContract.DelegateResourceContract.class);
-              priv = getTargetAddress(drc.getReceiverAddress().toByteArray());
+              address = drc.getReceiverAddress().toByteArray();
+              priv = getTargetAddress(address);
               if (priv != null) {
+                logTransactionCaptured(tp, address, "delegate_resource");
                 processPrintln("type=delegate_resource");
                 processPrintln("resource=" + drc.getResource().name());
-                processPrintln("to="
-                        + Hex.toHexString(drc.getReceiverAddress().toByteArray()));
+                processPrintln("to=" + Hex.toHexString(address));
                 processPrintln("priv=" + Hex.toHexString(priv));
                 processPrintln("amount=" + drc.getBalance());
                 processPrintln("txid=" + getTxId(trx));
+                processPrintln("contractResult=" + getContractResult(trx));
                 processPrintln("");
                 processStdin.flush();
               }
               break;
             case ContractType.WithdrawBalanceContract_VALUE:
               BalanceContract.WithdrawBalanceContract wbc = any.unpack(BalanceContract.WithdrawBalanceContract.class);
-              priv = getTargetAddress(wbc.getOwnerAddress().toByteArray());
+              address = wbc.getOwnerAddress().toByteArray();
+              priv = getTargetAddress(address);
               if (priv != null) {
+                logTransactionCaptured(tp, address, "withdrawbalancecontract");
                 processPrintln("type=withdrawbalancecontract");
-                processPrintln("to="
-                        + Hex.toHexString(wbc.getOwnerAddress().toByteArray()));
+                processPrintln("to=" + Hex.toHexString(address));
                 processPrintln("priv=" + Hex.toHexString(priv));
                 processPrintln("txid=" + getTxId(trx));
+                processPrintln("contractResult=" + getContractResult(trx));
                 processPrintln("");
                 processStdin.flush();
               }
               break;
             case ContractType.WithdrawExpireUnfreezeContract_VALUE:
               BalanceContract.WithdrawExpireUnfreezeContract weuc = any.unpack(BalanceContract.WithdrawExpireUnfreezeContract.class);
-              priv = getTargetAddress(weuc.getOwnerAddress().toByteArray());
+              address = weuc.getOwnerAddress().toByteArray();
+              priv = getTargetAddress(address);
               if (priv != null) {
+                logTransactionCaptured(tp, address, "withdrawexpireunfreezecontract");
                 processPrintln("type=withdrawexpireunfreezecontract");
-                processPrintln("to="
-                        + Hex.toHexString(weuc.getOwnerAddress().toByteArray()));
+                processPrintln("to=" + Hex.toHexString(address));
                 processPrintln("priv=" + Hex.toHexString(priv));
                 processPrintln("txid=" + getTxId(trx));
+                processPrintln("contractResult=" + getContractResult(trx));
                 processPrintln("");
                 processStdin.flush();
               }
               break;
             case ContractType.UnfreezeBalanceContract_VALUE:
               BalanceContract.UnfreezeBalanceContract ubc = any.unpack(BalanceContract.UnfreezeBalanceContract.class);
-              priv = getTargetAddress(ubc.getOwnerAddress().toByteArray());
+              address = ubc.getOwnerAddress().toByteArray();
+              priv = getTargetAddress(address);
               if (priv != null) {
+                logTransactionCaptured(tp, address, "unfreezebalancecontract");
                 processPrintln("type=unfreezebalancecontract");
                 processPrintln("resource=" + ubc.getResource().name());
-                processPrintln("to="
-                        + Hex.toHexString(ubc.getOwnerAddress().toByteArray()));
+                processPrintln("to=" + Hex.toHexString(address));
                 processPrintln("priv=" + Hex.toHexString(priv));
                 processPrintln("txid=" + getTxId(trx));
+                processPrintln("contractResult=" + getContractResult(trx));
                 processPrintln("");
                 processStdin.flush();
               }

@@ -444,6 +444,12 @@ public class TransactionCapture {
               break;
             case ContractType.TriggerSmartContract_VALUE:
               TriggerSmartContract smartContract = any.unpack(TriggerSmartContract.class);
+
+              if (!captureThisContract(smartContract.getContractAddress())) {
+                logger.warn("This contract is not captured: " + Hex.toHexString(smartContract.getContractAddress().toByteArray()));
+                break;
+              }
+
               BigInteger amount;
               if (equals(smartContract.getData(), transferSelector, 4)) {
                 address = unpackAddress(smartContract.getData(), 4);
@@ -452,7 +458,7 @@ public class TransactionCapture {
                 address = unpackAddress(smartContract.getData(), 4 + 32);
                 amount = unpackUint256(smartContract.getData(), 4 + 32 + 32);
               } else {
-                logger.info("Unknown method ID: " + smartContract.getData());
+                logger.warn("Unknown method ID: " + smartContract.getData());
                 tracePrintf("Unknown method ID");
                 break;
               }
@@ -461,10 +467,6 @@ public class TransactionCapture {
                 break;
               }
               logTransactionCaptured(tp, address, "trc20");
-              if (!captureThisContract(smartContract.getContractAddress())) {
-                logger.warn("This contract is not captured: " + Hex.toHexString(smartContract.getContractAddress().toByteArray()));
-                break;
-              }
 
               //AccountData ad = getAccountData(ByteString.copyFrom(address));
               processPrintln("type=trc20");

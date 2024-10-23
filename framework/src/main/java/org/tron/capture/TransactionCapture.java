@@ -458,7 +458,6 @@ public class TransactionCapture {
                 address = unpackAddress(smartContract.getData(), 4 + 32);
                 amount = unpackUint256(smartContract.getData(), 4 + 32 + 32);
               } else {
-                logger.warn("Unknown method ID: " + smartContract.getData());
                 tracePrintf("Unknown method ID");
                 break;
               }

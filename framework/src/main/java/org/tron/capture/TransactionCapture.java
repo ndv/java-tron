@@ -446,7 +446,7 @@ public class TransactionCapture {
               TriggerSmartContract smartContract = any.unpack(TriggerSmartContract.class);
 
               if (!captureThisContract(smartContract.getContractAddress())) {
-                logger.warn("This contract is not captured: " + Hex.toHexString(smartContract.getContractAddress().toByteArray()));
+                tracePrintf("This contract is not captured: " + Hex.toHexString(smartContract.getContractAddress().toByteArray()));
                 break;
               }
 

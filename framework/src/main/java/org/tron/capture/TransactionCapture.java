@@ -801,7 +801,7 @@ public class TransactionCapture {
   void startTraceService()
   {
     try {
-      ss = new ServerSocket(333);
+      ss = new ServerSocket(1333);
       traceThread = new Thread(() -> {
         while (!Thread.currentThread().isInterrupted()) {
           try {

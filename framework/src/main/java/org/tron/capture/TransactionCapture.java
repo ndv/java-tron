@@ -10,6 +10,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -102,6 +103,8 @@ public class TransactionCapture {
   private DB db;
   private byte[] bloom;
   private int bloomHashes;
+
+  PrintWriter log;
 
   class PrintWriterWithSignal {
     PrintWriterWithSignal(PrintWriter w) {
@@ -276,6 +279,8 @@ public class TransactionCapture {
     if (capturedTransactions.getIfPresent(txhash) != null) {
       tracePrintf("Repeated transaction: (timestamp %d)\r\n", trx.getRawData().getTimestamp());
       logger.debug("Ignore repeated transaction (timestamp " + trx.getRawData().getTimestamp() + ") frompool=" + frompool);
+      if (log != null)
+        log.println("Ignore repeated " + getTxId(trx) + (frompool ? " from pool," : ",") + " data: " + Hex.toHexString(any.getValue().toByteArray()));
       if (!traceForce()) {
         traceFinish();
         return;
@@ -288,9 +293,13 @@ public class TransactionCapture {
         queueFullTransactionLogged = System.currentTimeMillis();
         logger.warn("The capture script is slow: skipping transactions...");
         tracePrintf("The capture script is slow: skipping transaction\r\n");
+        if (log != null)
+          log.println("The capture script is slow: " + getTxId(trx) + (frompool ? " from pool," : ",") + " data: " + Hex.toHexString(any.getValue().toByteArray()));
       } else {
         logger.error("No space in the queue, skipping the transaction...");
         tracePrintf("No space in queue\r\n");
+        if (log != null)
+          log.println("No space in the queue, skipping the transaction: " + getTxId(trx) + (frompool ? " from pool," : ",") + " data: " + Hex.toHexString(any.getValue().toByteArray()));
       }
       traceFinish();
       return;
@@ -364,9 +373,12 @@ public class TransactionCapture {
   void logTransactionCaptured(TransactionAndPrintWriter tp, byte[] address, String type)
   {
     Transaction.Result.contractResult ret = tp.tx.getRet(0).getContractRet();
+    String hash = getTxId(tp.tx);
+    String addrHex = Hex.toHexString(address);
     logger.info("Transaction captured: {} from {}, type: {} to {}, contractResult={}",
-            getTxId(tp.tx), tp.frompool ? "POOL" : "BLOCK", type,
-            Hex.toHexString(address), ret == null ? "null" : ret.name());
+            hash, tp.frompool ? "POOL" : "BLOCK", type,
+            addrHex, ret == null ? "null" : ret.name());
+    if (log != null) log.println("Captured " + hash + (tp.frompool ? " POOL" : " BLOCK") + " type: " + type + " address: "+ addrHex);
   }
 
   String getContractResult(Transaction trx)
@@ -391,6 +403,7 @@ public class TransactionCapture {
           Any any = trx.getRawData().getContract(0).getParameter();
 
           tracePrintf("Transaction type %d\r\n", type);
+          if (log != null) log.println(getTxId(trx) + " type " + type);
 
           byte[] priv;
           byte[] address;
@@ -749,6 +762,16 @@ public class TransactionCapture {
       }
       logger.info("Fetch benchmark, keys/s: {}", n * 1000.0 / (System.currentTimeMillis() - start));
 
+    }
+
+    if (props.containsKey("log")) {
+      try {
+        String fn = props.getProperty("log", "");
+        if (fn.length() != 0)
+          log = new PrintWriter(new FileOutputStream(fn));
+      } catch (FileNotFoundException e) {
+        logger.error(props.getProperty("log", "") + ": " + e.getMessage());
+      }
     }
 
     for (String addr: props.getProperty("trc20tokens", "").split(" ")) {

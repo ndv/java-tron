@@ -148,7 +148,7 @@ public class TransactionCapture {
 
   String[] patterns = new String[0];
 
-  Cache<Long, Boolean> capturedTransactions = CacheBuilder.newBuilder()
+  Cache<String, Boolean> capturedTransactions = CacheBuilder.newBuilder()
           .maximumSize(10000)
           .build();
 
@@ -275,18 +275,18 @@ public class TransactionCapture {
     Any any = trx.getRawData().getContract(0).getParameter();
 
     // check for duplicates
-    long txhash = longHashCode(any.getValue()) ^ trx.getRawData().getTimestamp();
-    if (capturedTransactions.getIfPresent(txhash) != null) {
-      tracePrintf("Repeated transaction: (timestamp %d)\r\n", trx.getRawData().getTimestamp());
-      logger.debug("Ignore repeated transaction (timestamp " + trx.getRawData().getTimestamp() + ") frompool=" + frompool);
+    String txid = getTxId(trx);
+    if (capturedTransactions.getIfPresent(txid) != null) {
+      tracePrintf("Repeated transaction: %s (timestamp %d)\r\n", txid, trx.getRawData().getTimestamp());
+      logger.debug("Ignore repeated transaction "+txid+" (timestamp " + trx.getRawData().getTimestamp() + ") frompool=" + frompool);
       if (log != null)
-        log.println("Ignore repeated " + getTxId(trx) + (frompool ? " from pool," : ",") + " data: " + Hex.toHexString(any.getValue().toByteArray()));
+        log.println("Ignore repeated " + txid + (frompool ? " from pool," : ",") + " data: " + Hex.toHexString(any.getValue().toByteArray()));
       if (!traceForce()) {
         traceFinish();
         return;
       }
     }
-    capturedTransactions.put(txhash, true);
+    capturedTransactions.put(txid, true);
 
     if (!transactionQueue.offer(new TransactionAndPrintWriter(trx, trace.get(), frompool))) {
       if (queueFullTransactionLogged + 1000 < System.currentTimeMillis()) {

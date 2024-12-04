@@ -372,13 +372,18 @@ public class TransactionCapture {
 
   void logTransactionCaptured(TransactionAndPrintWriter tp, byte[] address, String type)
   {
-    Transaction.Result.contractResult ret = tp.tx.getRet(0).getContractRet();
+    String retName = "null";
+    if (tp.tx.getRetCount() > 0) {
+      Transaction.Result.contractResult ret = tp.tx.getRet(0).getContractRet();
+      retName = ret == null ? "null" : ret.name();
+    }
     String hash = getTxId(tp.tx);
     String addrHex = Hex.toHexString(address);
     logger.info("Transaction captured: {} from {}, type: {} to {}, contractResult={}",
             hash, tp.frompool ? "POOL" : "BLOCK", type,
-            addrHex, ret == null ? "null" : ret.name());
-    if (log != null) log.println("Captured " + hash + (tp.frompool ? " POOL" : " BLOCK") + " type: " + type + " address: "+ addrHex);
+            addrHex, retName);
+    if (log != null)
+      log.println("Captured " + hash + (tp.frompool ? " POOL" : " BLOCK") + " type: " + type + " address: " + addrHex);
   }
 
   String getContractResult(Transaction trx)

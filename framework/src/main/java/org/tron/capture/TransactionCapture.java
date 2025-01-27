@@ -25,6 +25,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -41,20 +43,24 @@ import javax.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.util.encoders.Hex;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.stereotype.Component;
 import org.tron.api.GrpcAPI;
 import org.tron.common.crypto.Hash;
 import org.tron.common.parameter.CommonParameter;
+import org.tron.common.runtime.ProgramResult;
 import org.tron.common.utils.ByteArray;
 import org.tron.common.utils.Commons;
 import org.tron.common.utils.Sha256Hash;
 import org.tron.common.utils.StringUtil;
 import org.tron.core.Wallet;
+import org.tron.core.actuator.VMActuator;
 import org.tron.core.capsule.BlockCapsule;
 import org.tron.core.capsule.ContractCapsule;
 import org.tron.core.capsule.TransactionCapsule;
 import org.tron.core.capsule.TransactionInfoCapsule;
 import org.tron.core.db.Manager;
+import org.tron.core.db.TransactionContext;
 import org.tron.core.db.TransactionStore;
 import org.tron.core.exception.ContractValidateException;
 import org.tron.core.exception.ItemNotFoundException;
@@ -66,11 +72,13 @@ import org.tron.core.vm.OperationRegistry;
 import org.tron.core.vm.VM;
 import org.tron.core.vm.VMConstant;
 import org.tron.core.vm.config.ConfigLoader;
+import org.tron.core.vm.config.VMConfig;
 import org.tron.core.vm.program.Program;
 import org.tron.core.vm.program.invoke.ProgramInvoke;
 import org.tron.core.vm.program.invoke.ProgramInvokeFactory;
 import org.tron.core.vm.repository.Repository;
 import org.tron.core.vm.repository.RepositoryImpl;
+import org.tron.core.vm.utils.MUtil;
 import org.tron.leveldb.CompressionType;
 import org.tron.leveldb.DB;
 import org.tron.leveldb.Options;
@@ -80,6 +88,7 @@ import org.tron.protos.Protocol.InternalTransaction.CallValueInfo;
 import org.tron.protos.Protocol.Transaction;
 import org.tron.protos.Protocol.Transaction.Contract.ContractType;
 import org.tron.protos.contract.AssetIssueContractOuterClass.TransferAssetContract;
+import org.tron.protos.contract.SmartContractOuterClass;
 import org.tron.protos.contract.SmartContractOuterClass.TriggerSmartContract;
 import org.tron.protos.contract.BalanceContract;
 import org.tron.protos.contract.BalanceContract.AccountIdentifier;
@@ -111,6 +120,8 @@ public class TransactionCapture {
 
   PrintWriter log;
 
+  boolean logTrace;
+
   class PrintWriterWithSignal {
     PrintWriterWithSignal(PrintWriter w) {
       this.w = w;
@@ -130,6 +141,7 @@ public class TransactionCapture {
     }
 
     public Transaction tx;
+    public ProgramResult programResult;
     public PrintWriterWithSignal trace;
     public boolean frompool;
   }
@@ -153,8 +165,9 @@ public class TransactionCapture {
 
   String[] patterns = new String[0];
 
+  // txid -> frompool map
   Cache<String, Boolean> capturedTransactions = CacheBuilder.newBuilder()
-          .maximumSize(10000)
+          .maximumSize(30000)
           .build();
 
   private static byte[] methodSelector(String methodSignature) {
@@ -211,10 +224,20 @@ public class TransactionCapture {
     return (a >>> n) | (a << (32 - n));
   }
 
+  String formattedTime() {
+    LocalTime currentTime = LocalTime.now();
+    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
+    return currentTime.format(formatter);
+  }
+
   void tracePrintf(String msg, Object... args) {
     PrintWriterWithSignal t = trace.get();
     if (t != null) {
       t.w.printf(msg, args);
+    }
+    if (logTrace) {
+      log.write(formattedTime() + " ");
+      log.printf(msg, args);
     }
   }
 
@@ -277,23 +300,59 @@ public class TransactionCapture {
       return;
     }
 
-    Any any = trx.getRawData().getContract(0).getParameter();
-
     // check for duplicates
     String txid = getTxId(trx);
     if (capturedTransactions.getIfPresent(txid) != null) {
       tracePrintf("Repeated transaction: %s (timestamp %d)\r\n", txid, trx.getRawData().getTimestamp());
-      logger.debug("Ignore repeated transaction "+txid+" (timestamp " + trx.getRawData().getTimestamp() + ") frompool=" + frompool);
-      if (log != null)
-        log.println("Ignore repeated " + txid + (frompool ? " from pool," : ",") + " data: " + Hex.toHexString(any.getValue().toByteArray()));
+      //logger.debug("Ignore repeated transaction "+txid+" (timestamp " + trx.getRawData().getTimestamp() + ") frompool=" + frompool);
+      if (log != null) {
+        Any any = trx.getRawData().getContract(0).getParameter();
+        log.println(formattedTime() + " Ignore repeated " + txid + (frompool ? " from pool," : ",") + " data: " +
+                Hex.toHexString(any.getValue().toByteArray()));
+      }
       if (!traceForce()) {
         traceFinish();
         return;
       }
     }
-    capturedTransactions.put(txid, true);
 
-    if (!transactionQueue.offer(new TransactionAndPrintWriter(trx, trace.get(), frompool))) {
+    capturedTransactions.put(txid, frompool);
+
+    if (log != null) {
+      log.println(formattedTime() + " Capture " + txid + (frompool ? " from pool," : ","));
+    }
+
+    TransactionAndPrintWriter txTask = new TransactionAndPrintWriter(trx, trace.get(), frompool);
+
+    if (isUnknownCall(trx)) {
+      trace.set(txTask.trace);
+      try {
+        TriggerSmartContract smartContract = null;
+        try {
+          Any any = trx.getRawData().getContract(0).getParameter();
+          smartContract = any.unpack(TriggerSmartContract.class);
+          tracePrintf("Unknown method ID: " + Hex.toHexString(smartContract.getData().toByteArray()) + "\r\n");
+        } catch (InvalidProtocolBufferException e) {
+          trace.remove();
+          return;
+        }
+        ProgramResult pr = executeSmartContract(txTask, trx, smartContract);
+        if (pr == null) return;
+        txTask.programResult = pr;
+      } catch (ContractValidateException cve) {
+        tracePrintf("Error executing contract:" + cve.getMessage() + " in "+ getTxId(trx) + "\r\n");
+        logger.debug("Error executing contract: {} in tx {}", cve.getMessage(), getTxId(trx));
+      }
+      trace.remove();
+    }
+
+    scheduleCapturing(trx, frompool, txTask);
+  }
+
+  private void scheduleCapturing(Transaction trx, boolean frompool, TransactionAndPrintWriter txTask) {
+    Any any = trx.getRawData().getContract(0).getParameter();
+
+    if (!transactionQueue.offer(txTask)) {
       if (queueFullTransactionLogged + 1000 < System.currentTimeMillis()) {
         queueFullTransactionLogged = System.currentTimeMillis();
         logger.warn("The capture script is slow: skipping transactions...");
@@ -307,13 +366,28 @@ public class TransactionCapture {
           log.println("No space in the queue, skipping the transaction: " + getTxId(trx) + (frompool ? " from pool," : ",") + " data: " + Hex.toHexString(any.getValue().toByteArray()));
       }
       traceFinish();
-      return;
     } else {
       if (queueFullTransactionLogged > 0) {
         queueFullTransactionLogged = 0;
         logger.warn("Capture script is back to normal");
       }
     }
+  }
+
+  // capture ProgramResult of a smart contract call
+  public void capture(TransactionCapsule trxCap, BlockCapsule blockCap, ProgramResult result) {
+    if (db == null) return;
+    Transaction tx = trxCap.getInstance();
+    String txid = getTxId(tx);
+    Boolean b = capturedTransactions.getIfPresent(txid);
+    if (b != null && b.booleanValue()) {
+      // if from pool, the ProgramResult is already processed
+      if (log != null) log.println(formattedTime() + " " + txid + " ProgramResult is already processed from the pool");
+      return;
+    }
+    TransactionAndPrintWriter txTask = new TransactionAndPrintWriter(tx, null, false);
+    txTask.programResult = result;
+    scheduleCapturing(tx, false, txTask);
   }
 
   class AccountData {
@@ -373,6 +447,7 @@ public class TransactionCapture {
   private void processPrintln(String s) {
     processStdin.println(s);
     if (trace.get() != null) trace.get().w.println(s);
+    if (logTrace) log.println(s);
   }
 
   void logTransactionCaptured(TransactionAndPrintWriter tp, byte[] address, String type)
@@ -401,114 +476,182 @@ public class TransactionCapture {
     }
   }
 
-  private void executeSmartContract(
+  private ProgramResult executeSmartContract(
           TransactionAndPrintWriter tp,
           Transaction tx,
           TriggerSmartContract contract) throws ContractValidateException {
     byte[] contractAddress = contract.getContractAddress().toByteArray();
 
-    logger.debug("Call to an unknown method of the contract: {}, data: {}",
-            StringUtil.encode58Check(contractAddress),
-            ByteArray.toHexString(contract.getData().toByteArray()));
+    String addrbase58 = StringUtil.encode58Check(contractAddress);
+    byte[] callerAddress = contract.getOwnerAddress().toByteArray();
 
-    Repository rootRepository = RepositoryImpl.createRoot(StoreFactory.getInstance());
+    tracePrintf(getTxId(tx) +" Call to an unknown method of the contract: %s, data: %s, caller: %s\n",
+            addrbase58,
+            ByteArray.toHexString(contract.getData().toByteArray()),
+            StringUtil.encode58Check(contractAddress));
+
+    RepositoryImpl rootRepository = RepositoryImpl.createRoot(StoreFactory.getInstance());
     ContractCapsule deployedContract = rootRepository.getContract(contractAddress);
-    if (deployedContract == null) return;
+    if (deployedContract == null) return null;
     byte[] code = rootRepository.getCode(contractAddress);
 
     long vmStartInUs = System.nanoTime() / VMConstant.ONE_THOUSAND;
-    long vmShouldEndInUs = vmStartInUs + 1000000000;
+    long vmShouldEndInUs = vmStartInUs + 30000;
     long tokenValue = contract.getCallTokenValue();
     long tokenId = contract.getTokenId();
 
+    Protocol.Block headBlock = rootRepository.getBlockByNum(manager.getHeadBlockNum()).getInstance();
     ConfigLoader.load(StoreFactory.getInstance());
 
-    Protocol.Block block = rootRepository.getBlockByNum(manager.getHeadBlockNum()).getInstance();
+
+    Repository rep = new RepositoryImpl(StoreFactory.getInstance(), rootRepository) {
+      @Override
+      public void commit() {
+        logger.debug("repository.commit");
+      }
+      @Override
+      public void deleteContract(byte[] address) {
+        logger.debug("repository.deleteContract");
+      }
+    };
+
     ProgramInvoke programInvoke = ProgramInvokeFactory
             .createProgramInvoke(
                     org.tron.common.runtime.InternalTransaction.TrxType.TRX_CONTRACT_CALL_TYPE,
                     org.tron.common.runtime.InternalTransaction.ExecutorType.ET_NORMAL_TYPE, tx,
-                    tokenValue, tokenId, block, rootRepository.newRepositoryChild(), vmStartInUs,
-                    vmShouldEndInUs, 1000000000);
+                    tokenValue, tokenId, headBlock, rep, vmStartInUs,
+                    vmShouldEndInUs, 700000);
 
     org.tron.common.runtime.InternalTransaction rootInternalTx =
             new org.tron.common.runtime.InternalTransaction(tx, org.tron.common.runtime.InternalTransaction.TrxType.TRX_CONTRACT_CALL_TYPE);
-    Program program = new Program(code, contractAddress, programInvoke, rootInternalTx);
+
+    Program program = new Program(code, contractAddress, programInvoke, rootInternalTx) {
+      int counter = 0;
+
+      @Override
+      public int getCurrentOpIntValue() {
+        counter++;
+        return super.getCurrentOpIntValue();
+      }
+
+      @Override
+      public boolean isStopped() {
+        if (counter == 100) stop();
+        return super.isStopped();
+      }
+    };
+
+    if (VMConfig.allowTvmCompatibleEvm()) {
+        program.setContractVersion(deployedContract.getContractVersion());
+    }
     byte[] txId = TransactionUtil.getTransactionId(tx).getBytes();
     program.setRootTransactionId(txId);
     program.getResult().setContractAddress(contractAddress);
+    long callValue = contract.getCallValue();
+    if (callValue > 0) {
+      tracePrintf(getTxId(tx) + " Add "+callValue+" to "+addrbase58+"\n");
+      rep.addBalance(contractAddress, callValue);
+      MUtil.transfer(rep, callerAddress, contractAddress, callValue);
+    }
     VM.play(program, OperationRegistry.getTable());
 
-    if (program.getResult() != null) {
+    tracePrintf(getTxId(tx) + " Done executing\n");
 
-      String txid = getTxId(tx);
-      for (org.tron.common.runtime.InternalTransaction it : program.getResult().getInternalTransactions()) {
-        if (it.getTransferToAddress() != null) {
-          byte[] addr = it.getTransferToAddress();
+    return program.getResult();
+  }
 
-          String addrBase58 = StringUtil.encode58Check(addr);
+  private boolean isUnknownCall(Transaction tx)
+  {
+    int type = tx.getRawData().getContract(0).getType().getNumber();
+    Any any = tx.getRawData().getContract(0).getParameter();
 
-          tracePrintf("Internal transaction to %s from tx %s\r\n", addrBase58, txid);
-          if ("call".equals(it.getNote())) {
-            BigInteger amount;
-            if (captureThisContract(ByteString.copyFrom(addr))) {
-              byte[] address;
-              if (equals(it.getData(), transferSelector, 4)) {
-                tracePrintf("transfer() method call\r\n");
-                address = unpackAddress(it.getData(), 4);
-                amount = unpackUint256(it.getData(), 4 + 32);
-              } else if (equals(it.getData(), transferFromSelector, 4)) {
-                tracePrintf("transferFrom() method call\r\n");
-                address = unpackAddress(it.getData(), 4 + 32);
-                amount = unpackUint256(it.getData(), 4 + 32 + 32);
-              } else
-                continue; // ignore other methods of TRC-20 contracts
+    if (type == ContractType.TriggerSmartContract_VALUE) {
+      TriggerSmartContract smartContract = null;
+      try {
+        smartContract = any.unpack(TriggerSmartContract.class);
+      } catch (InvalidProtocolBufferException e) {
+        return false;
+      }
 
-              byte[] priv = getTargetAddress(address);
-              if (priv == null) {
-                continue;
-              }
-              logTransactionCaptured(tp, address, "trc20");
+      if (captureThisContract(smartContract.getContractAddress())) {
+        if (equals(smartContract.getData(), transferSelector, 4)) return false;
+        if (equals(smartContract.getData(), transferFromSelector, 4))  return false;
+      }
 
-              tracePrintf("trc20 transfer %s of %s to %s\r\n", amount,
-                      StringUtil.encode58Check(addr),
-                      StringUtil.encode58Check(address));
+      return true;
+    }
 
-              processPrintln("type=trc20");
-              processPrintln("to=" + Hex.toHexString(address));
+    return false;
+  }
+
+  private void captureProgramResult(TransactionAndPrintWriter tp, Transaction tx, ProgramResult programResult) {
+    String txid = getTxId(tx);
+    for (org.tron.common.runtime.InternalTransaction it : programResult.getInternalTransactions()) {
+      if (it.getTransferToAddress() != null) {
+        byte[] addr = it.getTransferToAddress();
+
+        String addrBase58 = StringUtil.encode58Check(addr);
+
+        tracePrintf("Internal transaction '%s' to %s from tx %s\r\n", it.getNote(), addrBase58, txid);
+        if ("call".equals(it.getNote())) {
+          BigInteger amount;
+          if (captureThisContract(ByteString.copyFrom(addr))) {
+            byte[] address;
+            if (equals(it.getData(), transferSelector, 4)) {
+              tracePrintf("transfer() method call\r\n");
+              address = unpackAddress(it.getData(), 4);
+              amount = unpackUint256(it.getData(), 4 + 32);
+            } else if (equals(it.getData(), transferFromSelector, 4)) {
+              tracePrintf("transferFrom() method call\r\n");
+              address = unpackAddress(it.getData(), 4 + 32);
+              amount = unpackUint256(it.getData(), 4 + 32 + 32);
+            } else
+              continue; // ignore other methods of TRC-20 contracts
+
+            byte[] priv = getTargetAddress(address);
+            if (priv == null) {
+              continue;
+            }
+            logTransactionCaptured(tp, address, "trc20");
+
+            tracePrintf("trc20 transfer %s of %s to %s\r\n", amount,
+                    StringUtil.encode58Check(addr),
+                    StringUtil.encode58Check(address));
+
+            processPrintln("type=trc20");
+            processPrintln("to=" + Hex.toHexString(address));
+            processPrintln("priv=" + Hex.toHexString(priv));
+            processPrintln("amount=" + amount);
+            processPrintln("token=" + Hex.toHexString(addr));
+            //processPrintln("balance=" + ad.balance);
+            //processPrintln("energy=" + ad.energy);
+            //processPrintln("bandwidth=" + ad.bandwidth);
+            processPrintln("txid=" + txid);
+            processPrintln("contractResult=" + getContractResult(tx));
+            processPrintln("");
+            processStdin.flush();
+          }
+        } else {
+          byte[] priv = getTargetAddress(addr);
+          if (priv != null) {
+            if (it.getValue() != 0) {
+              processPrintln("type=transfer");
+              processPrintln("to=" + Hex.toHexString(addr));
               processPrintln("priv=" + Hex.toHexString(priv));
-              processPrintln("amount=" + amount);
-              processPrintln("token=" + Hex.toHexString(addr));
-              //processPrintln("balance=" + ad.balance);
-              //processPrintln("energy=" + ad.energy);
-              //processPrintln("bandwidth=" + ad.bandwidth);
+              processPrintln("value=" + it.getValue());
               processPrintln("txid=" + txid);
-              processPrintln("contractResult=" + getContractResult(tx));
               processPrintln("");
               processStdin.flush();
             }
-          } else {
-            byte[] priv = getTargetAddress(addr);
-            if (priv != null) {
-              if (it.getValue() != 0) {
-                processPrintln("type=transfer");
-                processPrintln("to=" + Hex.toHexString(addr));
-                processPrintln("priv=" + Hex.toHexString(priv));
-                processPrintln("value=" + it.getValue());
-                processPrintln("txid=" + txid);
-                processPrintln("");
-                processStdin.flush();
-              }
-              for (Map.Entry<String, Long> token : it.getTokenInfo().entrySet()) {
-                processPrintln("type=asset_transfer");
-                processPrintln("to=" + Hex.toHexString(addr));
-                processPrintln("priv=" + Hex.toHexString(priv));
-                processPrintln("asset=" + token.getKey());
-                processPrintln("value=" + token.getValue());
-                processPrintln("txid=" + txid);
-                processPrintln("");
-                processStdin.flush();
-              }
+            for (Map.Entry<String, Long> token : it.getTokenInfo().entrySet()) {
+              processPrintln("type=asset_transfer");
+              processPrintln("to=" + Hex.toHexString(addr));
+              processPrintln("priv=" + Hex.toHexString(priv));
+              processPrintln("asset=" + token.getKey());
+              processPrintln("value=" + token.getValue());
+              processPrintln("txid=" + txid);
+              processPrintln("");
+              processStdin.flush();
             }
           }
         }
@@ -526,13 +669,17 @@ public class TransactionCapture {
         this.trace.set(trace);
 
         try {
-          tracePrintf("Script thread got the transaction %s\r\n", trx.toString());
+          tracePrintf("Script thread got the transaction %s\r\n", getTxId(trx));
 
+          if (tp.programResult != null) {
+            captureProgramResult(tp, trx, tp.programResult);
+            continue;
+          }
+          
           int type = trx.getRawData().getContract(0).getType().getNumber();
           Any any = trx.getRawData().getContract(0).getParameter();
 
           tracePrintf("Transaction type %d\r\n", type);
-          if (log != null) log.println(getTxId(trx) + " type " + type);
 
           byte[] priv;
           byte[] address;
@@ -600,12 +747,6 @@ public class TransactionCapture {
                 } else
                   break; // ignore other methods of TRC-20 contracts
               } else {
-                tracePrintf("Unknown method ID: " + Hex.toHexString(smartContract.getData().toByteArray()) + "\r\n");
-                try {
-                  executeSmartContract(tp, trx, smartContract);
-                } catch (ContractValidateException cve) {
-                  tracePrintf(cve.getMessage() + "\r\n");
-                }
                 break;
               }
               priv = getTargetAddress(address);
@@ -694,32 +835,11 @@ public class TransactionCapture {
               }
               break;
           }
-          TransactionInfoCapsule tic = transactionRetStore.getTransactionInfo(getTxIdBytes(trx));
-          if (tic != null) {
-            for (InternalTransaction it : tic.getInstance().getInternalTransactionsList()) {
-              if (it.getTransferToAddress() != null) {
-                byte[] addr = it.getTransferToAddress().toByteArray();
-                tracePrintf("Internal transaction to %s", Hex.toHexString(addr));
-                priv = getTargetAddress(addr);
-                if (priv != null) {
-                  processPrintln("type=internal");
-                  processPrintln("to="
-                          + Hex.toHexString(addr));
-                  processPrintln("priv=" + Hex.toHexString(priv));
-                  for (CallValueInfo cvi : it.getCallValueInfoList()) {
-                    processPrintln(
-                            (cvi.getTokenId().isEmpty() ? "trx" : cvi.getTokenId())
-                                    + ".value=" + cvi.getCallValue());
-                  }
-                  processPrintln("txid=" + getTxId(trx));
-                  processPrintln("");
-                  processStdin.flush();
-                }
-              }
-            }
-          }
         } catch (Exception e) {
-          if (this.trace.get() != null) e.printStackTrace(this.trace.get().w);
+          if (this.trace.get() != null) {
+            e.printStackTrace(this.trace.get().w);
+            if (logTrace) e.printStackTrace(this.log);
+          }
           logger.error("In transaction capture", e);
         } finally {
           traceFinish();
@@ -929,8 +1049,12 @@ public class TransactionCapture {
     if (props.containsKey("log")) {
       try {
         String fn = props.getProperty("log", "");
-        if (fn.length() != 0)
+        if (fn.length() != 0) {
           log = new PrintWriter(new FileOutputStream(fn));
+          if (props.getProperty("log_trace", "false").equals("true")) {
+            logTrace = true;
+          }
+        }
       } catch (FileNotFoundException e) {
         logger.error(props.getProperty("log", "") + ": " + e.getMessage());
       }

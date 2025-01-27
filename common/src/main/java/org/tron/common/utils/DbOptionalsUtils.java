@@ -12,8 +12,8 @@ public class DbOptionalsUtils {
   public static final int DEFAULT_BLOCK_SIZE = 4 * 1024;
   public static final int DEFAULT_WRITE_BUFFER_SIZE = 16 * 1024 * 1024;
   public static final int DEFAULT_WRITE_BUFFER_SIZE_M = 64 * 1024 * 1024;
-  public static final long DEFAULT_CACHE_SIZE = 32 * 1024 * 1024L;
-  public static final int DEFAULT_MAX_OPEN_FILES = 100;
+  public static final long DEFAULT_CACHE_SIZE = 256 * 1024 * 1024L;
+  public static final int DEFAULT_MAX_OPEN_FILES = 200;
   /**
    * defaultM = {
    *   maxOpenFiles = 500
@@ -42,8 +42,8 @@ public class DbOptionalsUtils {
     Options dbOptions = new Options();
 
     dbOptions.createIfMissing(true);
-    dbOptions.paranoidChecks(true);
-    dbOptions.verifyChecksums(true);
+    dbOptions.paranoidChecks(false);
+    dbOptions.verifyChecksums(false);
 
     dbOptions.compressionType(DEFAULT_COMPRESSION_TYPE);
     dbOptions.blockSize(DEFAULT_BLOCK_SIZE);

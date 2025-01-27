@@ -92,9 +92,9 @@ public class Parameter {
   public class NetConstants {
 
     public static final long SYNC_FETCH_BATCH_NUM = 2000;
-    public static final long ADV_TIME_OUT = 20000L;
-    public static final long SYNC_TIME_OUT = 10000L;
-    public static final long NET_MAX_TRX_PER_SECOND = 700L;
+    public static final long ADV_TIME_OUT = 30000L;
+    public static final long SYNC_TIME_OUT = 30000L;
+    public static final long NET_MAX_TRX_PER_SECOND = 7000L;
     public static final int MSG_CACHE_DURATION_IN_BLOCKS = 5;
     public static final int MAX_BLOCK_FETCH_PER_PEER = 200;
     public static final int MAX_TRX_FETCH_PER_PEER = 2000;

@@ -536,7 +536,7 @@ public class TransactionCapture {
 
       @Override
       public boolean isStopped() {
-        if (counter == 5000) {
+        if (counter == 8000) {
           tracePrintf(getTxId(tx) + " stopped because reached "+ counter+" operations\n");
           stop();
         }
@@ -634,7 +634,8 @@ public class TransactionCapture {
               processPrintln("");
               processStdin.flush();
             }
-          }
+          } else
+            tracePrintf("Ignoring unknown contract " + StringUtil.encode58Check(addr)+ "\n");
         }
         if (it.getValue() != 0) {
           tracePrintf("%s trx transfer to %s\r\n", it.getValue(),

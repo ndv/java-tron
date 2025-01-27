@@ -496,7 +496,7 @@ public class TransactionCapture {
     byte[] code = rootRepository.getCode(contractAddress);
 
     long vmStartInUs = System.nanoTime() / VMConstant.ONE_THOUSAND;
-    long vmShouldEndInUs = vmStartInUs + 30000;
+    long vmShouldEndInUs = vmStartInUs + 70000;
     long tokenValue = contract.getCallTokenValue();
     long tokenId = contract.getTokenId();
 
@@ -536,7 +536,10 @@ public class TransactionCapture {
 
       @Override
       public boolean isStopped() {
-        if (counter == 100) stop();
+        if (counter == 5000) {
+          tracePrintf(getTxId(tx) + " stopped because reached "+ counter+" operations\n");
+          stop();
+        }
         return super.isStopped();
       }
     };
@@ -555,7 +558,8 @@ public class TransactionCapture {
     }
     VM.play(program, OperationRegistry.getTable());
 
-    tracePrintf(getTxId(tx) + " Done executing\n");
+    tracePrintf(getTxId(tx) + " Done executing " + program.getResult().getRuntimeError() + " " +
+            Hex.toHexString(program.getResult().getRet().getData()) + "\n");
 
     return program.getResult();
   }

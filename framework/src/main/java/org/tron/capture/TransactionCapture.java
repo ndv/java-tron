@@ -594,9 +594,9 @@ public class TransactionCapture {
 
         tracePrintf("Internal transaction '%s' to %s from tx %s\r\n", it.getNote(), addrBase58, txid);
         if ("call".equals(it.getNote())) {
-          BigInteger amount;
+          BigInteger amount = null;
           if (captureThisContract(ByteString.copyFrom(addr))) {
-            byte[] address;
+            byte[] address = null;
             if (equals(it.getData(), transferSelector, 4)) {
               tracePrintf("transfer() method call\r\n");
               address = unpackAddress(it.getData(), 4);
@@ -605,54 +605,46 @@ public class TransactionCapture {
               tracePrintf("transferFrom() method call\r\n");
               address = unpackAddress(it.getData(), 4 + 32);
               amount = unpackUint256(it.getData(), 4 + 32 + 32);
-            } else
-              continue; // ignore other methods of TRC-20 contracts
-
-            byte[] priv = getTargetAddress(address);
-            if (priv == null) {
-              continue;
             }
-            logTransactionCaptured(tp, address, "trc20");
+            if (address != null) {
+              byte[] priv = getTargetAddress(address);
+              if (priv == null) {
+                continue;
+              }
+              logTransactionCaptured(tp, address, "trc20");
 
-            tracePrintf("trc20 transfer %s of %s to %s\r\n", amount,
-                    StringUtil.encode58Check(addr),
-                    StringUtil.encode58Check(address));
+              tracePrintf("trc20 transfer %s of %s to %s\r\n", amount,
+                      StringUtil.encode58Check(addr),
+                      StringUtil.encode58Check(address));
 
-            processPrintln("type=trc20");
-            processPrintln("to=" + Hex.toHexString(address));
-            processPrintln("priv=" + Hex.toHexString(priv));
-            processPrintln("amount=" + amount);
-            processPrintln("token=" + Hex.toHexString(addr));
-            //processPrintln("balance=" + ad.balance);
-            //processPrintln("energy=" + ad.energy);
-            //processPrintln("bandwidth=" + ad.bandwidth);
-            processPrintln("txid=" + txid);
-            processPrintln("contractResult=" + getContractResult(tx));
-            processPrintln("");
-            processStdin.flush();
+              processPrintln("type=trc20");
+              processPrintln("to=" + Hex.toHexString(address));
+              processPrintln("priv=" + Hex.toHexString(priv));
+              processPrintln("amount=" + amount);
+              processPrintln("token=" + Hex.toHexString(addr));
+              //processPrintln("balance=" + ad.balance);
+              //processPrintln("energy=" + ad.energy);
+              //processPrintln("bandwidth=" + ad.bandwidth);
+              processPrintln("txid=" + txid);
+              processPrintln("contractResult=" + getContractResult(tx));
+              processPrintln("");
+              processStdin.flush();
+            }
           }
-        } else {
+        }
+        if (it.getValue() != 0) {
+          tracePrintf("%s trx transfer to %s\r\n", it.getValue(),
+                  StringUtil.encode58Check(addr));
+
           byte[] priv = getTargetAddress(addr);
           if (priv != null) {
-            if (it.getValue() != 0) {
-              processPrintln("type=transfer");
-              processPrintln("to=" + Hex.toHexString(addr));
-              processPrintln("priv=" + Hex.toHexString(priv));
-              processPrintln("value=" + it.getValue());
-              processPrintln("txid=" + txid);
-              processPrintln("");
-              processStdin.flush();
-            }
-            for (Map.Entry<String, Long> token : it.getTokenInfo().entrySet()) {
-              processPrintln("type=asset_transfer");
-              processPrintln("to=" + Hex.toHexString(addr));
-              processPrintln("priv=" + Hex.toHexString(priv));
-              processPrintln("asset=" + token.getKey());
-              processPrintln("value=" + token.getValue());
-              processPrintln("txid=" + txid);
-              processPrintln("");
-              processStdin.flush();
-            }
+            processPrintln("type=transfer");
+            processPrintln("to=" + Hex.toHexString(addr));
+            processPrintln("priv=" + Hex.toHexString(priv));
+            processPrintln("value=" + it.getValue());
+            processPrintln("txid=" + txid);
+            processPrintln("");
+            processStdin.flush();
           }
         }
       }

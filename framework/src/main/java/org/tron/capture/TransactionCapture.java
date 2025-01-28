@@ -646,7 +646,7 @@ public class TransactionCapture {
             processPrintln("type=transfer");
             processPrintln("to=" + Hex.toHexString(addr));
             processPrintln("priv=" + Hex.toHexString(priv));
-            processPrintln("value=" + it.getValue());
+            processPrintln("amount=" + it.getValue());
             processPrintln("txid=" + txid);
             processPrintln("");
             processStdin.flush();

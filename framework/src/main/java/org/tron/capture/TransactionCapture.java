@@ -122,6 +122,8 @@ public class TransactionCapture {
 
   boolean logTrace;
 
+  boolean runContracts;
+
   class PrintWriterWithSignal {
     PrintWriterWithSignal(PrintWriter w) {
       this.w = w;
@@ -324,7 +326,7 @@ public class TransactionCapture {
 
     TransactionAndPrintWriter txTask = new TransactionAndPrintWriter(trx, trace.get(), frompool);
 
-    if (isUnknownCall(trx)) {
+    if (runContracts && isUnknownCall(trx)) {
       trace.set(txTask.trace);
       try {
         TriggerSmartContract smartContract = null;
@@ -959,6 +961,8 @@ public class TransactionCapture {
       logger.warn("Can't load capture.props" + e + "; won't capture transactions");
       return;
     }
+
+    runContracts = "true".equals(props.getProperty("run_contracts", "true"));
 
     File dirFile = new File(props.getProperty("keydb", "keydb"));
 

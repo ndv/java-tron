@@ -1101,7 +1101,7 @@ public class TransactionCapture {
       }
     }, 10, 1000);
 
-    startTraceService();
+    //startTraceService();
   }
 
   ServerSocket ss;

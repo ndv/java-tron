@@ -57,32 +57,25 @@ public abstract class TronStoreWithRevoking<T extends ProtoCapsule> implements I
     String dbEngine = CommonParameter.getInstance().getStorage().getDbEngine();
     if ("LEVELDB".equals(dbEngine.toUpperCase())) {
       this.db =  new LevelDB(
-          new LevelDbDataSourceImpl(StorageUtils.getOutputDirectoryByDbName(dbName),
-              dbName,
-              getOptionsByDbNameForLevelDB(dbName),
-              CommonParameter.getInstance()
-                  .getStorage().isDbSync()));
+          new LevelDbDataSourceImpl(StorageUtils.getOutputDirectoryByDbName(dbName), dbName));
     } else if ("ROCKSDB".equals(dbEngine.toUpperCase())) {
       String parentPath = Paths
           .get(StorageUtils.getOutputDirectoryByDbName(dbName), CommonParameter
               .getInstance().getStorage().getDbDirectory()).toString();
-      this.db =  new RocksDB(
-          new RocksDbDataSourceImpl(parentPath,
-              dbName, CommonParameter.getInstance()
-              .getRocksDBCustomSettings(), getDirectComparator()));
+      this.db =  new RocksDB(new RocksDbDataSourceImpl(parentPath, dbName));
     } else {
       throw new RuntimeException(String.format("db engine %s is error", dbEngine));
     }
     this.revokingDB = new Chainbase(new SnapshotRoot(this.db));
   }
 
-  protected org.tron.leveldb.Options getOptionsByDbNameForLevelDB(String dbName) {
+/*  protected org.tron.leveldb.Options getOptionsByDbNameForLevelDB(String dbName) {
     return StorageUtils.getOptionsByDbName(dbName);
   }
 
   protected AbstractComparator getDirectComparator() {
     return null;
-  }
+  }*/
 
   protected TronStoreWithRevoking(DB<byte[], byte[]> db) {
     this.db = db;

@@ -15,8 +15,9 @@
 
 package org.tron.common.storage.leveldb;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
-import java.io.File;
+import com.google.common.primitives.Bytes;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,15 +29,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-
-import com.google.common.primitives.Bytes;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.tron.leveldb.CompressionType;
@@ -70,30 +68,11 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
   private Options options;
   private boolean sync;
   private ReadWriteLock resetDbLock = new ReentrantReadWriteLock();
-  private static final String LEVELDB = "LEVELDB";
-  private static final org.slf4j.Logger innerLogger = LoggerFactory.getLogger(LEVELDB);
-  private Logger leveldbLogger = new Logger() {
-    @Override
-    public void log(String message) {
-      innerLogger.info("{} {}", dataBaseName, message);
-    }
-  };
+
 
   /**
    * constructor.
    */
-  public LevelDbDataSourceImpl(String parentPath, String dataBaseName, Options options,
-      boolean sync) {
-    this.parentPath = Paths.get(
-        parentPath,
-        CommonParameter.getInstance().getStorage().getDbDirectory()
-    ).toString();
-    this.dataBaseName = dataBaseName;
-    this.options = options.logger(leveldbLogger);
-    this.sync = sync;
-    initDB();
-  }
-
   public LevelDbDataSourceImpl(String parentPath, String dataBaseName) {
     this.parentPath = Paths.get(
         parentPath,
@@ -101,11 +80,12 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
     ).toString();
 
     this.dataBaseName = dataBaseName;
-    options = new Options().logger(leveldbLogger);
+    this.options = StorageUtils.getOptionsByDbName(dataBaseName);
+    this.sync = CommonParameter.getInstance().getStorage().isDbSync();
+    initDB();
   }
 
-  @Override
-  public void initDB() {
+  private void initDB() {
     resetDbLock.writeLock().lock();
     try {
       logger.debug("Init DB: {}.", dataBaseName);
@@ -222,6 +202,7 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
   }
 
   @Deprecated
+  @VisibleForTesting
   @Override
   public Set<byte[]> allKeys() {
     resetDbLock.readLock().lock();
@@ -239,6 +220,7 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
   }
 
   @Deprecated
+  @VisibleForTesting
   @Override
   public Set<byte[]> allValues() {
     resetDbLock.readLock().lock();
@@ -354,6 +336,8 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
     }
   }
 
+  @Deprecated
+  @VisibleForTesting
   @Override
   public long getTotal() throws RuntimeException {
     resetDbLock.readLock().lock();
@@ -412,14 +396,18 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
 
   @Override
   public void updateByBatch(Map<byte[], byte[]> rows) {
+    this.updateByBatch(rows, sync);
+  }
+
+  private void updateByBatch(Map<byte[], byte[]> rows, boolean sync) {
     resetDbLock.readLock().lock();
     try {
-      updateByBatchInner(rows);
+      updateByBatchInner(rows, sync);
     } catch (Exception e) {
       try {
-        updateByBatchInner(rows);
+        updateByBatchInner(rows, sync);
       } catch (Exception e1) {
-        throw new RuntimeException(e);
+        throw new RuntimeException(e1);
       }
     } finally {
       resetDbLock.readLock().unlock();
@@ -447,6 +435,24 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
     }
   }
 
+  /**
+   * Returns an iterator over the database.
+   *
+   * <p><b>CRITICAL:</b> The returned iterator holds native resources and <b>MUST</b> be closed
+   * after use to prevent memory leaks. It is strongly recommended to use a try-with-resources
+   * statement.
+   *
+   * <p>Example of correct usage:
+   * <pre>{@code
+   * try (DBIterator iterator = db.iterator()) {
+   *   while (iterator.hasNext()) {
+   *     // ... process entry
+   *   }
+   * }
+   * }</pre>
+   *
+   * @return a new database iterator that must be closed.
+   */
   @Override
   public org.tron.core.db.common.iterator.DBIterator iterator() {
     return new StoreIterator(getDBIterator());
@@ -459,7 +465,7 @@ public class LevelDbDataSourceImpl extends DbStat implements DbSourceInter<byte[
   @Override
   public LevelDbDataSourceImpl newInstance() {
     return new LevelDbDataSourceImpl(StorageUtils.getOutputDirectoryByDbName(dataBaseName),
-        dataBaseName, options, sync);
+        dataBaseName);
   }
 
   private DBIterator getDBIterator() {

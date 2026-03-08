@@ -104,19 +104,13 @@ public class TxCacheDB implements DB<byte[], byte[]>, Flusher {
     String dbEngine = CommonParameter.getInstance().getStorage().getDbEngine();
     if ("LEVELDB".equals(dbEngine.toUpperCase())) {
       this.persistentStore = new LevelDB(
-          new LevelDbDataSourceImpl(StorageUtils.getOutputDirectoryByDbName(name),
-              name, StorageUtils.getOptionsByDbName(name),
-              CommonParameter.getInstance()
-                  .getStorage().isDbSync()));
+          new LevelDbDataSourceImpl(StorageUtils.getOutputDirectoryByDbName(name), name));
     } else if ("ROCKSDB".equals(dbEngine.toUpperCase())) {
       String parentPath = Paths
           .get(StorageUtils.getOutputDirectoryByDbName(name), CommonParameter
               .getInstance().getStorage().getDbDirectory()).toString();
 
-      this.persistentStore = new RocksDB(
-          new RocksDbDataSourceImpl(parentPath,
-              name, CommonParameter.getInstance()
-              .getRocksDBCustomSettings()));
+      this.persistentStore = new RocksDB(new RocksDbDataSourceImpl(parentPath, name));
     } else {
       throw new RuntimeException(String.format("db type: %s is not supported", dbEngine));
     }
